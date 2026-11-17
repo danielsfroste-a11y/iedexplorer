@@ -148,7 +148,7 @@ namespace IEDExplorer.Views
             }
 
             Iec61850State state;
-            if (!IsOnline(out state)
+            if (!IsOnline(out state))
             {
                 MessageBox.Show(this, "Connect to the IED and load its MMS model before adding signals.",
                     "No IED", MessageBoxButtons.OK, MessageBoxIcon.Information);
