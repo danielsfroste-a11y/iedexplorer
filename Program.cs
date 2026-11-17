@@ -42,7 +42,7 @@ namespace IEDExplorer
                 try
                 {
                     ScadaBreakerSelfTest.Run();
-                    File.WriteAllText("scada-selftest-result.txt", "PASS");
+                    File.WriteAllText("scada-selftest-result.txt", "PASS" + Environment.NewLine);
                     Environment.Exit(0);
                 }
                 catch (Exception ex)
