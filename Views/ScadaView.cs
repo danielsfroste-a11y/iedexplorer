@@ -366,8 +366,7 @@ namespace IEDExplorer.Views
             BreakerGlyph glyph = new BreakerGlyph
             {
                 Left = 33, Top = 69, Width = 224, Height = 119,
-                Anchor = AnchorStyles.Top,
-                ToolTipText = null
+                Anchor = AnchorStyles.Top
             };
             glyph.Click += delegate { OpenBreakerControls(card); };
             Label details = new Label
