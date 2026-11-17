@@ -102,6 +102,20 @@ namespace IEDExplorer
             Application.SetCompatibleTextRenderingDefault(false);
 
             Env env = new Env();
+            string readOnlyMmsHost = null;
+            foreach (string arg in args)
+                if (arg.StartsWith("--mms-readonly-probe=", StringComparison.OrdinalIgnoreCase))
+                    readOnlyMmsHost = arg.Substring("--mms-readonly-probe=".Length);
+            if (readOnlyMmsHost != null)
+            {
+                try { Environment.Exit(ScadaMmsReadOnlyProbe.Run(readOnlyMmsHost)); }
+                catch (Exception ex)
+                {
+                    File.WriteAllText("mms-probe-result.txt", "MMS PROBE ERROR: " + ex);
+                    Environment.Exit(3);
+                }
+                return;
+            }
             Application.Run(new Views.MainWindow());
 
             List<string> natives = new List<string>();

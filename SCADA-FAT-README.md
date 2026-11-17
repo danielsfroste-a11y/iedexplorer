@@ -88,3 +88,6 @@ This revision runs deterministic offline model tests and a non-writing TCP/102 r
 
 ### Self tests
 \`IEDExplorer.exe --scada-selftest\` runs synthetic model tests with no network access and writes \`scada-selftest-result.txt\` to the current working directory. \`IEDExplorer.exe --tcp102-probe=192.168.2.10\` performs **only** a TCP port-102 handshake attempt and writes \`tcp102-probe-result.txt\`. It does not send MMS, IEC-61850 or control traffic.
+
+### Optional read-only MMS probe
+Run `IEDExplorer.exe --mms-readonly-probe=192.168.2.10` to start a hidden, time-bounded instance of the existing MMS client, discover up to six real IEC CSWI/XCBR Pos objects, read their public status, quality and control model and write `mms-probe-result.txt`. This command NEVER invokes any control service. The diagnostic is independent of the application GUI; if a service-mode runner does not provide a supported Windows desktop, the probe may be inconclusive even when normal desktop IEC 61850 communication works. CI marks it as diagnostic, not as a build blocker.
