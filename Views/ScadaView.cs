@@ -55,7 +55,8 @@ namespace IEDExplorer.Views
         private static readonly Color Ink = Color.FromArgb(29, 48, 71);
         private static readonly Color Muted = Color.FromArgb(111, 128, 145);
         private static readonly Color Blue = Color.FromArgb(32, 99, 188);
-        private static readonly Color Background = Color.FromArgb(245, 248, 252);
+        private static readonly Color Background = Color.FromArgb(242, 246, 250);
+        private static readonly Color Teal = Color.FromArgb(18, 143, 135);
 
         public ScadaView(WindowManager windowManager)
         {
@@ -265,6 +266,21 @@ namespace IEDExplorer.Views
             else AddSignal(node, false);
         }
 
+        private static void StyleTile(Panel tile, Color accent)
+        {
+            tile.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                var r = new Rectangle(0, 0, tile.Width - 1, tile.Height - 1);
+                using (var pen = new Pen(Color.FromArgb(219, 228, 238)))
+                    e.Graphics.DrawRectangle(pen, r);
+                using (var brush = new SolidBrush(accent))
+                    e.Graphics.FillRectangle(brush, 0, 0, 4, tile.Height);
+                using (var line = new Pen(Color.FromArgb(234, 239, 245)))
+                    e.Graphics.DrawLine(line, 18, tile.Height - 48, tile.Width - 18, tile.Height - 48);
+            };
+        }
+
         private void CreateCard(SignalCard card)
         {
             if (card.IsBreaker)
@@ -274,35 +290,36 @@ namespace IEDExplorer.Views
             }
             var tile = new Panel
             {
-                Width = 256,
-                Height = 174,
+                Width = 282,
+                Height = 190,
                 BackColor = Color.White,
-                Margin = new Padding(9),
-                BorderStyle = BorderStyle.FixedSingle,
-                Padding = new Padding(14),
+                Margin = new Padding(10),
+                BorderStyle = BorderStyle.None,
+                Padding = new Padding(16),
                 AllowDrop = true
             };
+            StyleTile(tile, card.IsCommand ? Color.FromArgb(196, 112, 50) : Teal);
             tile.DragEnter += OnDragEnter;
             tile.DragDrop += OnDragDrop;
 
             var caption = new Label
             {
                 Text = card.Caption,
-                Left = 13, Top = 12, Width = 225, Height = 40,
+                Left = 18, Top = 19, Width = 245, Height = 42,
                 ForeColor = Ink, Font = new Font("Segoe UI", 10, FontStyle.Bold),
                 AutoEllipsis = true
             };
             var value = new Label
             {
                 Text = card.IsCommand ? "COMMAND" : "—",
-                Left = 13, Top = 57, Width = 225, Height = 43,
-                ForeColor = Blue, Font = new Font("Segoe UI", 20, FontStyle.Bold),
+                Left = 18, Top = 72, Width = 245, Height = 58,
+                ForeColor = Ink, Font = new Font("Segoe UI Semibold", 26, FontStyle.Bold),
                 AutoEllipsis = true
             };
             var detail = new Label
             {
                 Text = card.Address,
-                Left = 13, Top = 112, Width = 225, Height = 44,
+                Left = 18, Top = 145, Width = 245, Height = 34,
                 ForeColor = Muted, Font = new Font("Segoe UI", 8),
                 AutoEllipsis = true
             };
@@ -319,7 +336,7 @@ namespace IEDExplorer.Views
                 var button = new Button
                 {
                     Text = "Select / Operate...",
-                    Left = 13, Top = 61, Width = 225, Height = 38,
+                    Left = 18, Top = 77, Width = 245, Height = 40,
                     BackColor = Color.FromArgb(232, 240, 252),
                     ForeColor = Ink,
                     FlatStyle = FlatStyle.Flat,
@@ -351,9 +368,10 @@ namespace IEDExplorer.Views
             Panel tile = new Panel
             {
                 Width = 292, Height = 294, BackColor = Color.White,
-                Margin = new Padding(9), BorderStyle = BorderStyle.FixedSingle,
+                Margin = new Padding(10), BorderStyle = BorderStyle.None,
                 AllowDrop = true
             };
+            StyleTile(tile, Blue);
             tile.DragEnter += OnDragEnter;
             tile.DragDrop += OnDragDrop;
             Label caption = new Label
@@ -673,7 +691,7 @@ namespace IEDExplorer.Views
                     card.LastChanged = DateTime.Now;
                 }
                 card.Value.Text = current;
-                card.Value.ForeColor = Blue; // No inferred open/closed/tripped semantics from bare booleans.
+                card.Value.ForeColor = Ink; // Neutral numerical value; no inferred alarm semantics.
                 card.Detail.Text = card.Address + "\n" +
                     (card.LastChanged == DateTime.MinValue ? "No value received" :
                      "Value changed " + card.LastChanged.ToString("HH:mm:ss"));
