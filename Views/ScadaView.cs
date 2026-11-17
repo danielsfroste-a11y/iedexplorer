@@ -28,6 +28,7 @@ namespace IEDExplorer.Views
             internal ScadaBreakerBinding Breaker;
             internal BreakerGlyph Glyph;
             internal bool CommandPending;
+            internal bool CommandInFlight;
             internal int PendingTarget;
             internal DateTime PendingSince;
             internal string CommandWarning;
@@ -542,6 +543,7 @@ namespace IEDExplorer.Views
             // original client's control stack; the UI never writes an MMS value itself.
             chooser.Close();
             card.CommandPending = true;
+            card.CommandInFlight = true;
             card.PendingSince = DateTime.UtcNow;
             card.PendingTarget = target;
             card.CommandWarning = "";
@@ -555,6 +557,7 @@ namespace IEDExplorer.Views
             {
                 Logger.getLogger().LogError("SCADA breaker command error: " + ex.Message);
             }
+            card.CommandInFlight = false;
             if (!accepted)
             {
                 card.CommandPending = false;
@@ -682,7 +685,7 @@ namespace IEDExplorer.Views
             Iec61850State state;
             if (!IsOnline(out state) || boundIed != state) return;
             // Do not overload the MMS queue while a breaker Select/Operate transaction runs.
-            if (cards.Any(x => x.CommandPending)) return;
+            if (cards.Any(x => x.CommandInFlight)) return;
             if (!string.IsNullOrEmpty(profileHost) &&
                 !string.Equals(profileHost, state.hostname, StringComparison.OrdinalIgnoreCase)) return;
             var readable = cards.SelectMany(x => x.IsBreaker
