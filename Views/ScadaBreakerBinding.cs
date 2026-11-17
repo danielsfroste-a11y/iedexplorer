@@ -203,6 +203,28 @@ namespace IEDExplorer.Views
             get { return ParseControlModel(ControlModel == null ? null : ControlModel.DataValue); }
         }
 
+        // DPC indications use 1=off and 2=on; IEC single-point may be Boolean.
+        // If a relevant blocking/permission point is available but has not yet
+        // been read, inhibit commands until its meaning can be established.
+        private static bool TryGetActive(NodeData signal, out bool active)
+        {
+            active = false;
+            if (signal == null || signal.DataValue == null) return false;
+            if (signal.DataValue is bool)
+            {
+                active = (bool)signal.DataValue;
+                return true;
+            }
+            try
+            {
+                long raw = Convert.ToInt64(signal.DataValue, CultureInfo.InvariantCulture);
+                if (raw != 1 && raw != 2) return false;
+                active = raw == 2;
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
         internal bool CanCommand(int targetValue)
         {
             if (targetValue != 1 && targetValue != 2 || !QualityGood) return false;
@@ -216,16 +238,11 @@ namespace IEDExplorer.Views
             if (model != 1 || Operate == null || !Operate.isLeaf() ||
                 Operate.DataType != scsm_MMS_TypeEnum.integer) return false;
 
-            if (targetValue == 1)
-            {
-                if (OpenEnabled != null && OpenEnabled.DataValue is bool && !(bool)OpenEnabled.DataValue) return false;
-                if (OpenBlocked != null && OpenBlocked.DataValue is bool && (bool)OpenBlocked.DataValue) return false;
-            }
-            else
-            {
-                if (CloseEnabled != null && CloseEnabled.DataValue is bool && !(bool)CloseEnabled.DataValue) return false;
-                if (CloseBlocked != null && CloseBlocked.DataValue is bool && (bool)CloseBlocked.DataValue) return false;
-            }
+            NodeData enabled = targetValue == 1 ? OpenEnabled : CloseEnabled;
+            NodeData blocked = targetValue == 1 ? OpenBlocked : CloseBlocked;
+            bool active;
+            if (enabled != null && (!TryGetActive(enabled, out active) || !active)) return false;
+            if (blocked != null && (!TryGetActive(blocked, out active) || active)) return false;
             return true;
         }
 
