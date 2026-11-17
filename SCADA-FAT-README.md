@@ -46,7 +46,7 @@ The remote model is bound via `CommAddress` values, not UI tree-node IDs; this p
 The current result intentionally uses compact tiles for quick FAT work. A next phase can add a true synoptic single-line canvas (busbars, disconnectors, breakers, alarm lamps, arrows, typed analog readouts), with configurable status mappings, engineering units, quality/time indicators and multiple IED connections. These must be bound to actual datatypes and control models rather than guessed from path names.
 
 ## Repository review notes
-The repository inventory contains roughly 1,025 files (including generated ASN.1 model, DockPanel library, TreeViewAdv, embedded DLLs and resources). The control/UI/MMS data flows have been traced through `Program`, `Views/MainWindow`, `WindowManager`, `IedTreeView`, `IedDataView`, `PollView`, `Node*`, `Iec61850State`, `Iec61850Controller` and `Scsm_MMS_Worker`. This is an architectural review, **not** a claim of line-by-line auditing all third-party/generated code.
+The repository inventory contains 1,025 tree entries (files and folders, including generated ASN.1 model, DockPanel library, TreeViewAdv, embedded DLLs and resources). The control/UI/MMS data flows have been traced through `Program`, `Views/MainWindow`, `WindowManager`, `IedTreeView`, `IedDataView`, `PollView`, `Node*`, `Iec61850State`, `Iec61850Controller` and `Scsm_MMS_Worker`. This is an architectural review, **not** a claim of line-by-line auditing all third-party/generated code.
 
 Legacy risks to address separately:
 - Fixed in this branch: `NodeData.FC` previously walked parents without advancing to the next parent, risking an infinite loop.
