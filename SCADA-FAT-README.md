@@ -24,7 +24,7 @@ This branch adds a dockable, intentionally minimal FAT overview to the existing 
 ## Architecture
 - `Views/ScadaView.cs`: independent WinForms `DockContent`, layout persistence, low-volume polling, and safe command affordance.
 - `Views/WindowManager.cs`: owns one persistent dashboard and routes selections/commands.
-- `Views/IedTreeView.cs`: exposes context actions and routes controls through its existing `DoSendCommandClick`, including SBS/SBO dialogs.
+- `Views/IedTreeView.cs`: exposes context actions and routes controls through its existing `DoSendCommandClick`, including SBO dialogs.
 - `Views/MainWindow.cs`: toolbar shortcut.
 - `IEDExplorer.csproj`: registers new source.
 
@@ -49,8 +49,8 @@ The current result intentionally uses compact tiles for quick FAT work. A next p
 The repository inventory contains roughly 1,025 files (including generated ASN.1 model, DockPanel library, TreeViewAdv, embedded DLLs and resources). The control/UI/MMS data flows have been traced through `Program`, `Views/MainWindow`, `WindowManager`, `IedTreeView`, `IedDataView`, `PollView`, `Node*`, `Iec61850State`, `Iec61850Controller` and `Scsm_MMS_Worker`. This is an architectural review, **not** a claim of line-by-line auditing all third-party/generated code.
 
 Legacy risks to address separately:
-- `NodeData.FC` walks parents without advancing to the next parent, which risks an infinite loop if called.
-- `WindowManager.UnBindFromCapture` attempts to unsubscribe anonymous lambdas recreated on removal; those delegates are not the ones registered.
+- Fixed in this branch: `NodeData.FC` previously walked parents without advancing to the next parent, risking an infinite loop.
+- Fixed in this branch: `WindowManager.UnBindFromCapture` previously attempted to unsubscribe newly created anonymous lambdas, leaving old handlers attached.
 - `NodeData.ValueTag` is shared mutable UI state; multiple subscribers can interfere.
 - No existing automated build workflows or tests were present on the default branch when reviewed.
 
