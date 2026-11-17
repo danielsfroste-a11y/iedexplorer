@@ -39,10 +39,13 @@ namespace IEDExplorer
             {
                 tick.Tick += delegate
                 {
-                    if (DateTime.UtcNow.Subtract(started).TotalSeconds > 35)
+                    if (DateTime.UtcNow.Subtract(started).TotalSeconds > 105)
                     {
                         result = "MMS READ-ONLY PROBE TIMEOUT: " + host +
-                            "; no IEC 61850 association/model completed within 35 seconds.";
+                            "; no IEC 61850 association/model completed within 105 seconds. " +
+                            "State: " + (window.Get_iecf() == null ? "no data model yet" :
+                            window.Get_iecf().tstate.ToString() + "/" + window.Get_iecf().ostate.ToString() +
+                            "/" + window.Get_iecf().istate.ToString());;
                         tick.Stop();
                         window.Close();
                         return;
