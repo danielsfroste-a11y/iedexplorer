@@ -82,7 +82,15 @@ namespace IEDExplorer
                         report.AppendLine("  Switch: " + b.Key);
                         report.AppendLine("    Status: " + b.StatusAddress);
                         report.AppendLine("    Pos.stVal: " +
-                            (b.Position == null || b.Position.DataValue == null ? "<not read>" : b.Position.DataValue.ToString()));
+                            (b.Position == null || b.Position.DataValue == null ? "<not read>" :
+                             b.Position.DataValue is byte[] ? BitConverter.ToString((byte[])b.Position.DataValue) :
+                             b.Position.DataValue.ToString()));
+                        report.AppendLine("    Status type / trailing bits: " +
+                            (b.Position == null ? "<missing>" : b.Position.DataType.ToString() + " / " +
+                             (b.Position.DataParam == null ? "<unknown>" : b.Position.DataParam.ToString())));
+                        report.AppendLine("    Oper type / trailing bits: " +
+                            (b.Operate == null ? "<missing>" : b.Operate.DataType.ToString() + " / " +
+                             (b.Operate.DataParam == null ? "<unknown>" : b.Operate.DataParam.ToString())));
                         report.AppendLine("    Decoded: " + b.PositionValue);
                         report.AppendLine("    " + b.QualitySummary);
                         report.AppendLine("    Control model: " + b.ControlModelValue + " (" + b.ControlSummary + ")");

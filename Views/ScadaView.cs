@@ -27,6 +27,10 @@ namespace IEDExplorer.Views
             internal bool IsBreaker;
             internal ScadaBreakerBinding Breaker;
             internal BreakerGlyph Glyph;
+            internal bool CommandPending;
+            internal int PendingTarget;
+            internal DateTime PendingSince;
+            internal string CommandWarning;
             internal NodeData Node;
             internal string LastValue;
             internal DateTime LastChanged;
@@ -418,6 +422,17 @@ namespace IEDExplorer.Views
             ScadaBreakerBinding b = card.Breaker;
             BreakerPosition position = online && b != null ? b.PositionValue : BreakerPosition.Unknown;
             bool qualityGood = online && b != null && b.QualityGood;
+            if (card.CommandPending && b != null && b.PositionValue ==
+                (card.PendingTarget == 1 ? BreakerPosition.Open : BreakerPosition.Closed))
+            {
+                card.CommandPending = false;
+                card.CommandWarning = "";
+            }
+            if (card.CommandPending && DateTime.UtcNow.Subtract(card.PendingSince).TotalSeconds > 18)
+            {
+                card.CommandPending = false;
+                card.CommandWarning = "Ingen verifierad lägesändring efter manöver";
+            }
             BreakerGlyph glyph = card.Glyph;
             glyph.Position = position;
             glyph.Online = online;
@@ -438,7 +453,9 @@ namespace IEDExplorer.Views
             if (b.Timestamp != null && b.Timestamp.DataValue != null)
                 stamp = "\nIED-tid: " + b.Timestamp.StringValue;
             card.Detail.Text = b.LogicalNode + " • " + b.ControlSummary +
-                "\n" + b.QualitySummary + stamp;
+                "\n" + b.QualitySummary + stamp +
+                (card.CommandPending ? "\nINVÄNTAR LÄGESKVITTENS" : "") +
+                (string.IsNullOrEmpty(card.CommandWarning) ? "" : "\n" + card.CommandWarning);
         }
 
         private void OpenBreakerControls(SignalCard card)
@@ -452,6 +469,13 @@ namespace IEDExplorer.Views
                 return;
             }
             ScadaBreakerBinding b = card.Breaker;
+            if (card.CommandPending)
+            {
+                MessageBox.Show(this, "Tidigare manöver inväntar lägesåterkoppling. " +
+                    "Inga upprepade kommandon skickas automatiskt.",
+                    "Manöver pågår", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             if (!allowControls.Checked)
             {
                 MessageBox.Show(this, "Manövrering är spärrad. Aktivera 'Enable controls' " +
@@ -498,7 +522,7 @@ namespace IEDExplorer.Views
             }
         }
 
-        private void RequestBreakerCommand(SignalCard card, int target, Form chooser)
+        private async void RequestBreakerCommand(SignalCard card, int target, Form chooser)
         {
             Iec61850State state;
             if (!allowControls.Checked || !IsOnline(out state) || state != boundIed ||
@@ -516,8 +540,31 @@ namespace IEDExplorer.Views
 
             // Actual command packaging and the final IEC command dialog live in the
             // original client's control stack; the UI never writes an MMS value itself.
-            manager.ExecuteScadaBreakerCommand(card.Breaker.Operate, target);
             chooser.Close();
+            card.CommandPending = true;
+            card.PendingSince = DateTime.UtcNow;
+            card.PendingTarget = target;
+            card.CommandWarning = "";
+            RefreshCards();
+            bool accepted = false;
+            try
+            {
+                accepted = await manager.ExecuteScadaBreakerCommandAsync(card.Breaker, target);
+            }
+            catch (Exception ex)
+            {
+                Logger.getLogger().LogError("SCADA breaker command error: " + ex.Message);
+            }
+            if (!accepted)
+            {
+                card.CommandPending = false;
+                card.CommandWarning = "Kommandot nekades eller blev inte kvitterat";
+                RefreshCards();
+                return;
+            }
+            // Keep the symbol unchanged until a new Pos.stVal reports target.
+            ReadVisibleCards(12);
+            RefreshCards();
         }
 
         private void RenameCard(SignalCard card, Label caption)
@@ -634,6 +681,8 @@ namespace IEDExplorer.Views
         {
             Iec61850State state;
             if (!IsOnline(out state) || boundIed != state) return;
+            // Do not overload the MMS queue while a breaker Select/Operate transaction runs.
+            if (cards.Any(x => x.CommandPending)) return;
             if (!string.IsNullOrEmpty(profileHost) &&
                 !string.Equals(profileHost, state.hostname, StringComparison.OrdinalIgnoreCase)) return;
             var readable = cards.SelectMany(x => x.IsBreaker

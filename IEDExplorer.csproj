@@ -481,6 +481,7 @@
     <Compile Include="Views\BreakerGlyph.cs" />
     <Compile Include="ScadaBreakerSelfTest.cs" />
     <Compile Include="ScadaMmsReadOnlyProbe.cs" />
+    <Compile Include="MmsWriteReceipt.cs" />
     <Compile Include="Iec61850Model.cs" />
     <Compile Include="IsoLayers.cs" />
     <Compile Include="MMSCapture.cs" />

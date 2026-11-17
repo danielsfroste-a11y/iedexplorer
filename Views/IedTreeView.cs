@@ -753,16 +753,12 @@ namespace IEDExplorer.Views
             winMgr.AddScadaSignal((NodeBase)(sender as ToolStripItem).Tag, true);
         }
 
-        internal bool OpenBreakerCommand(NodeData operate, int target)
+        internal async Task<bool> OpenBreakerCommandAsync(ScadaBreakerBinding binding, int target)
         {
-            // Critical: this is only direct-with-normal-security IEC control.
-            // No SBO attempt and no raw MMS write bypassing command metadata.
-            if (operate == null || (target != 1 && target != 2) ||
-                operate.Name != "ctlVal" || operate.Parent == null ||
-                operate.Parent.Name != "Oper" ||
-                operate.DataType != scsm_MMS_TypeEnum.integer)
+            if (binding == null || !binding.CanCommand(target) ||
+                binding.Operate == null || (target != 1 && target != 2))
                 return false;
-
+            NodeData operate = binding.Operate;
             Iec61850State state = operate.GetIecs();
             if (state == null || state != winMgr.mainWindow.Get_iecf() ||
                 state.tstate != TcpProtocolState.TCP_CONNECTED ||
@@ -771,40 +767,56 @@ namespace IEDExplorer.Views
                 return false;
 
             CommandParams request = state.Controller.PrepareSendCommand(operate);
-            if (request == null ||
-                request.CommandFlowFlag != CommandCtrlModel.Direct_Control_With_Normal_Security ||
-                request.DataType != scsm_MMS_TypeEnum.integer)
-            {
-                MessageBox.Show(this, "Reläskyddets kontrollmodell är inte direkt manöver. " +
-                    "Symbolmanöver avbryts.", "Manöverspärr",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            int model = binding.ControlModelValue;
+            if (request == null || (model != 1 && model != 4) ||
+                (int)request.CommandFlowFlag != model ||
+                request.DataType != scsm_MMS_TypeEnum.bit_string)
                 return false;
-            }
-            request.ctlVal = (long)target;
-            request.SBOrun = false;
+            request.ctlVal = ScadaBreakerBinding.EncodeDpc(target);
+            request.BitStringTrailingBits = 6;
             request.interlockCheck = true;
             request.synchroCheck = true;
             request.Test = false;
-            // Preserve the original command metadata dialog, but never accept a changed
-            // target, disabled interlocking/synchrocheck or SBO from a breaker tile.
-            using (var dialog = new CommandDialog(request))
+            request.SBOrun = model == 4;
+
+            // The specialized breaker chooser already selected and confirmed the
+            // exact target. Unlike the legacy generic dialog, it does not confuse
+            // DPC (open/closed) with binary-step control (higher/lower).
+            if (model == 4)
             {
-                if (dialog.ShowDialog(this) != DialogResult.OK)
+                NodeData select = binding.SelectWithValue;
+                if (select == null || select.Parent == null ||
+                    select.Parent.Name != "SBOw" ||
+                    select.DataType != scsm_MMS_TypeEnum.bit_string)
                     return false;
+                MmsWriteReceipt selectReply = new MmsWriteReceipt();
+                state.Controller.SendCommand(select, request, ActionRequested.WriteAsStructure, selectReply);
+                bool selectAccepted = await selectReply.WaitForAckAsync(8000);
+                if (!selectAccepted)
+                {
+                    MessageBox.Show(this, "SBOw Select nekades eller fick inget svar. " +
+                        "Operate skickades INTE.", "Brytarmanöver", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return false;
+                }
+                // Never Operate if the transport/model/quality/position changed while
+                // waiting for select acknowledgement.
+                if (state != winMgr.mainWindow.Get_iecf() ||
+                    state.istate != Iec61850lStateEnum.IEC61850_FREILAUF ||
+                    !binding.CanCommand(target)) return false;
             }
-            long actualTarget;
-            try { actualTarget = Convert.ToInt64(request.ctlVal); }
-            catch (Exception) { return false; }
-            if (actualTarget != target || request.SBOrun ||
-                !request.interlockCheck || !request.synchroCheck || request.Test)
+
+            MmsWriteReceipt operateReply = new MmsWriteReceipt();
+            state.Controller.SendCommand(operate, request, ActionRequested.WriteAsStructure, operateReply);
+            bool writeAccepted = await operateReply.WaitForAckAsync(8000);
+            if (!writeAccepted)
             {
-                MessageBox.Show(this, "Manöverparametrarna ändrades. Inget kommando skickades.",
-                    "Manöver avbruten", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, "Operate nekades eller fick inget MMS-svar. " +
+                    "Kontrollera reläets händelselogg och fysiskt läge.",
+                    "Brytarmanöver", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
-            // Queued via the standard MMS engine; the symbol only reflects later
-            // Pos.stVal feedback. Queue submission is NOT a confirmation of operation.
-            state.Controller.SendCommand(operate, request, ActionRequested.WriteAsStructure);
+            // A successful write acknowledgement does NOT mean that the breaker
+            // has moved. The SCADA symbol remains driven only by Pos.stVal.
             return true;
         }
 

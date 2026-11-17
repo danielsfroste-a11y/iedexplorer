@@ -157,13 +157,32 @@ namespace IEDExplorer.Views
         {
             if (value == null || value is bool) return BreakerPosition.Unknown;
             long number;
-            try { number = Convert.ToInt64(value, CultureInfo.InvariantCulture); }
+            try
+            {
+                byte[] bytes = value as byte[];
+                if (bytes != null)
+                {
+                    // MMS BIT STRING (SIZE 2) is packed MSB-first; e.g. 0x40=open, 0x80=closed.
+                    if (bytes.Length != 1 || (bytes[0] & 0x3F) != 0)
+                        return BreakerPosition.Unknown;
+                    number = (bytes[0] >> 6) & 0x03;
+                }
+                else
+                    number = Convert.ToInt64(value, CultureInfo.InvariantCulture);
+            }
             catch (Exception) { return BreakerPosition.Unknown; }
             if (number == 0) return BreakerPosition.Intermediate;
             if (number == 1) return BreakerPosition.Open;
             if (number == 2) return BreakerPosition.Closed;
             if (number == 3) return BreakerPosition.Bad;
             return BreakerPosition.Unknown;
+        }
+
+        internal static byte[] EncodeDpc(int target)
+        {
+            if (target != 1 && target != 2)
+                throw new ArgumentOutOfRangeException("target", "IEC DPC command must be open=1 or closed=2");
+            return new byte[] { (byte)(target << 6) };
         }
 
         internal BreakerPosition PositionValue
@@ -217,6 +236,14 @@ namespace IEDExplorer.Views
             }
             try
             {
+                byte[] bits = signal.DataValue as byte[];
+                if (bits != null)
+                {
+                    BreakerPosition dp = ParsePosition(bits);
+                    if (dp != BreakerPosition.Open && dp != BreakerPosition.Closed) return false;
+                    active = dp == BreakerPosition.Closed;
+                    return true;
+                }
                 long raw = Convert.ToInt64(signal.DataValue, CultureInfo.InvariantCulture);
                 if (raw != 1 && raw != 2) return false;
                 active = raw == 2;
@@ -233,10 +260,18 @@ namespace IEDExplorer.Views
             if ((position == BreakerPosition.Open && targetValue == 1) ||
                 (position == BreakerPosition.Closed && targetValue == 2)) return false;
             int model = ControlModelValue;
-            // Until the legacy client's SBO acknowledgement handling is upgraded, only
-            // direct control with normal security is exposed by the symbol.
-            if (model != 1 || Operate == null || !Operate.isLeaf() ||
-                Operate.DataType != scsm_MMS_TypeEnum.integer) return false;
+            // Only the 2-bit IEC DPC control type is accepted here, with a real
+            // 2-bit Pos status read and either direct (1) or SBOw (4) control model.
+            if (Position == null || Position.DataType != scsm_MMS_TypeEnum.bit_string ||
+                !(Position.DataParam is int) || (int)Position.DataParam != 6)
+                return false;
+            if (Operate == null || !Operate.isLeaf() ||
+                Operate.DataType != scsm_MMS_TypeEnum.bit_string)
+                return false;
+            if (model == 4 && (SelectWithValue == null || !SelectWithValue.isLeaf() ||
+                SelectWithValue.DataType != scsm_MMS_TypeEnum.bit_string))
+                return false;
+            if (model != 1 && model != 4) return false;
 
             NodeData enabled = targetValue == 1 ? OpenEnabled : CloseEnabled;
             NodeData blocked = targetValue == 1 ? OpenBlocked : CloseBlocked;
@@ -254,7 +289,8 @@ namespace IEDExplorer.Views
                 if (model < 0) return "ctlModel ej avläst";
                 if (model == 0) return "Endast status (ctlModel 0)";
                 if (model == 1) return "Direkt manöver (ctlModel 1)";
-                if (model == 2 || model == 4) return "SBO – endast övervakning i denna revision";
+                if (model == 2) return "SBO normal – endast övervakning";
+                if (model == 4) return "SBOw / förbättrad säkerhet (Select + Operate)";
                 if (model == 3) return "Enhanced direct – endast övervakning";
                 return "Okänd manövermodell";
             }

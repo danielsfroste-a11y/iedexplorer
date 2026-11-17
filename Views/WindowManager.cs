@@ -204,9 +204,12 @@ namespace IEDExplorer.Views
                 scadaWindow.AddSignal(signal, asCommand);
         }
 
-        internal bool ExecuteScadaBreakerCommand(NodeData operate, int requestedState)
+        internal System.Threading.Tasks.Task<bool> ExecuteScadaBreakerCommandAsync(
+            ScadaBreakerBinding binding, int requestedState)
         {
-            return iedWindow != null && iedWindow.OpenBreakerCommand(operate, requestedState);
+            return iedWindow != null
+                ? iedWindow.OpenBreakerCommandAsync(binding, requestedState)
+                : System.Threading.Tasks.Task.FromResult(false);
         }
 
         internal void ExecuteScadaCommand(NodeBase signal)
