@@ -538,6 +538,12 @@ namespace IEDExplorer.Views
                         item.Tag = n;
                         item.Click += new EventHandler(OnSendCommandClick);
                     }
+                    if (ScadaBreakerBinding.IsBreakerCandidate(n))
+                    {
+                        item = menu.Items.Add("Add to SCADA / breaker symbol");
+                        item.Tag = n;
+                        item.Click += new EventHandler(OnAddBreakerClick);
+                    }
                     // Add individual data attributes to the FAT dashboard.
                     if (n is NodeData && !(n is NodeDO) && n.isLeaf())
                     {
@@ -737,9 +743,69 @@ namespace IEDExplorer.Views
             winMgr.AddScadaSignal((NodeBase)(sender as ToolStripItem).Tag, false);
         }
 
+        void OnAddBreakerClick(object sender, EventArgs e)
+        {
+            winMgr.AddScadaBreaker((NodeBase)(sender as ToolStripItem).Tag);
+        }
+
         void OnAddScadaCommandClick(object sender, EventArgs e)
         {
             winMgr.AddScadaSignal((NodeBase)(sender as ToolStripItem).Tag, true);
+        }
+
+        internal bool OpenBreakerCommand(NodeData operate, int target)
+        {
+            // Critical: this is only direct-with-normal-security IEC control.
+            // No SBO attempt and no raw MMS write bypassing command metadata.
+            if (operate == null || (target != 1 && target != 2) ||
+                operate.Name != "ctlVal" || operate.Parent == null ||
+                operate.Parent.Name != "Oper" ||
+                operate.DataType != scsm_MMS_TypeEnum.integer)
+                return false;
+
+            Iec61850State state = operate.GetIecs();
+            if (state == null || state != winMgr.mainWindow.Get_iecf() ||
+                state.tstate != TcpProtocolState.TCP_CONNECTED ||
+                state.ostate != IsoProtocolState.OSI_CONNECTED ||
+                state.istate != Iec61850lStateEnum.IEC61850_FREILAUF)
+                return false;
+
+            CommandParams request = state.Controller.PrepareSendCommand(operate);
+            if (request == null ||
+                request.CommandFlowFlag != CommandCtrlModel.Direct_Control_With_Normal_Security ||
+                request.DataType != scsm_MMS_TypeEnum.integer)
+            {
+                MessageBox.Show(this, "Reläskyddets kontrollmodell är inte direkt manöver. " +
+                    "Symbolmanöver avbryts.", "Manöverspärr",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+            request.ctlVal = (long)target;
+            request.SBOrun = false;
+            request.interlockCheck = true;
+            request.synchroCheck = true;
+            request.Test = false;
+            // Preserve the original command metadata dialog, but never accept a changed
+            // target, disabled interlocking/synchrocheck or SBO from a breaker tile.
+            using (var dialog = new CommandDialog(request))
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return false;
+            }
+            long actualTarget;
+            try { actualTarget = Convert.ToInt64(request.ctlVal); }
+            catch (Exception) { return false; }
+            if (actualTarget != target || request.SBOrun ||
+                !request.interlockCheck || !request.synchroCheck || request.Test)
+            {
+                MessageBox.Show(this, "Manöverparametrarna ändrades. Inget kommando skickades.",
+                    "Manöver avbruten", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+            // Queued via the standard MMS engine; the symbol only reflects later
+            // Pos.stVal feedback. Queue submission is NOT a confirmation of operation.
+            state.Controller.SendCommand(operate, request, ActionRequested.WriteAsStructure);
+            return true;
         }
 
         internal void OpenControlDialog(NodeBase signal)
