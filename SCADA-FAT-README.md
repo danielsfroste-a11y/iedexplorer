@@ -19,7 +19,7 @@ This branch adds a dockable, intentionally minimal FAT overview to the existing 
 - The cards show **raw IEC 61850 values**; no semantic assumption is made that Boolean true means a closed breaker, trip or healthy status.
 - Timestamp shown is when the UI **observed a changed value**, not the IED source timestamp. Do not use it as an event timestamp.
 - The current revision is one active MMS session/IED at a time. Maximum 200 cards, reads are throttled to six per 1.5 seconds and paused if the MMS send queue is busy.
-- The legacy application targets **.NET Framework 4.5** and retains its existing third-party dependencies.
+- This branch retargets the legacy application to **.NET Framework 4.8** and retains its existing third-party dependencies. A compatible .NET Framework runtime is required on the target Windows computer.
 
 ## Architecture
 - `Views/ScadaView.cs`: independent WinForms `DockContent`, layout persistence, low-volume polling, and safe command affordance.
@@ -55,3 +55,15 @@ Legacy risks to address separately:
 - No existing automated build workflows or tests were present on the default branch when reviewed.
 
 GPL-3.0-or-later notice: this addition follows the upstream project's license; preserve copyright and licensing notices in redistributed builds.
+
+## Automated local EXE delivery
+
+The GitHub Actions workflow builds on `windows-latest` using Visual Studio/MSBuild. It then transfers the compiled output as a **one-day temporary Actions artifact** to the user's connected self-hosted Windows runner. The local runner does **not** need Visual Studio/MSBuild or an altered PowerShell execution policy. It only runs Windows CMD.
+
+After a fully successful run, the permanent local launcher is:
+
+```text
+C:\actions-runner\IEDExplorer-FAT\Start-IEDExplorer-FAT.cmd
+```
+
+The matching executable stays in `C:\actions-runner\IEDExplorer-FAT\builds\<commit-id>\IEDExplorer.exe` and the current installed commit is recorded in `BUILD-INFO.txt`. A failed compile or transfer does not update the launcher. To avoid exhausting Actions storage, the temporary handoff artifact is deleted after successful local installation. Previous local builds remain accessible and can be removed manually if no longer needed. The workflow **does not auto-launch a Windows GUI** inside the unattended runner session.
