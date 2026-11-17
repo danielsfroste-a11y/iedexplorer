@@ -33,53 +33,71 @@ namespace IEDExplorer.Views
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-            Color ink = Color.FromArgb(33, 55, 76);
-            Color accent = !Online || !QualityGood ? Color.FromArgb(139, 149, 160) :
-                Position == BreakerPosition.Open ? Color.FromArgb(27, 143, 102) :
-                Position == BreakerPosition.Closed ? Color.FromArgb(191, 63, 66) :
-                Color.FromArgb(206, 145, 56);
-            int x = Width / 2;
-            using (var line = new Pen(ink, 3f))
-            using (var switchPen = new Pen(accent, 4f))
-            using (var fill = new SolidBrush(accent))
-            using (var badgeFill = new SolidBrush(Color.FromArgb(245, 247, 251)))
-            using (var font = new Font("Segoe UI", 9.5f, FontStyle.Bold))
-            using (var stateFont = new Font("Segoe UI", 8f))
+            Color ink = Color.FromArgb(35, 54, 74);
+            Color accent = !Online || !QualityGood ? Color.FromArgb(148, 158, 171) :
+                Position == BreakerPosition.Open ? Color.FromArgb(29, 151, 112) :
+                Position == BreakerPosition.Closed ? Color.FromArgb(209, 76, 76) :
+                Color.FromArgb(213, 152, 57);
+            Color soft = !Online || !QualityGood ? Color.FromArgb(241, 243, 246) :
+                Position == BreakerPosition.Open ? Color.FromArgb(232, 248, 242) :
+                Position == BreakerPosition.Closed ? Color.FromArgb(253, 238, 237) :
+                Color.FromArgb(253, 246, 229);
+            Rectangle frame = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
+            using (GraphicsPath path = Rounded(frame, 14))
+            using (Brush bg = new SolidBrush(Color.FromArgb(247, 250, 253)))
+            using (Pen border = new Pen(Color.FromArgb(226, 234, 242)))
             {
-                g.DrawLine(line, x, 7, x, 26);
-                g.DrawLine(line, x, 81, x, 94);
-
-                // IEC switch contact: open blade tilted, closed blade vertical.
-                using (var contacts = new Pen(accent, 2.5f))
-                {
-                    g.DrawEllipse(contacts, x - 4, 27, 8, 8);
-                    g.DrawEllipse(contacts, x - 4, 74, 8, 8);
-                }
-                if (Position == BreakerPosition.Closed && Online && QualityGood)
-                    g.DrawLine(switchPen, x, 35, x, 74);
-                else if (Position == BreakerPosition.Open && Online && QualityGood)
-                    g.DrawLine(switchPen, x, 74, x + 24, 38);
-                else if (Position == BreakerPosition.Intermediate && Online && QualityGood)
-                {
-                    g.DrawLine(switchPen, x, 35, x - 12, 49);
-                    g.DrawLine(switchPen, x + 12, 60, x, 74);
-                }
+                g.FillPath(bg, path);
+                g.DrawPath(border, path);
+            }
+            int x = Width / 2;
+            int cy = 53;
+            using (Brush halo = new SolidBrush(soft))
+                g.FillEllipse(halo, x - 42, cy - 38, 84, 84);
+            using (Pen conductor = new Pen(ink, 3f))
+            using (Pen contact = new Pen(accent, 3.4f))
+            using (Brush contactFill = new SolidBrush(Color.White))
+            using (Brush statusBrush = new SolidBrush(accent))
+            using (Font font = new Font("Segoe UI", 9f, FontStyle.Bold))
+            {
+                conductor.StartCap = LineCap.Round;
+                conductor.EndCap = LineCap.Round;
+                contact.StartCap = LineCap.Round;
+                contact.EndCap = LineCap.Round;
+                g.DrawLine(conductor, x, 7, x, 31);
+                g.DrawLine(conductor, x, 75, x, 91);
+                g.FillEllipse(contactFill, x - 5, 28, 10, 10);
+                g.FillEllipse(contactFill, x - 5, 70, 10, 10);
+                g.DrawEllipse(contact, x - 5, 28, 10, 10);
+                g.DrawEllipse(contact, x - 5, 70, 10, 10);
+                if (Online && QualityGood && Position == BreakerPosition.Closed)
+                    g.DrawLine(contact, x, 38, x, 70);
+                else if (Online && QualityGood && Position == BreakerPosition.Open)
+                    g.DrawLine(contact, x, 72, x + 25, 40);
                 else
                 {
-                    g.DrawLine(switchPen, x, 36, x - 12, 47);
-                    g.DrawLine(switchPen, x + 12, 60, x, 73);
+                    g.DrawLine(contact, x, 38, x - 12, 49);
+                    g.DrawLine(contact, x + 12, 59, x, 70);
                     if (Position == BreakerPosition.Bad && Online)
-                    {
-                        g.DrawString("!", font, fill, x + 31, 44);
-                    }
+                        g.DrawString("!", font, statusBrush, x + 28, 42);
                 }
-
-                var rect = new Rectangle(0, 98, Width, 18);
-                TextRenderer.DrawText(g, StatusText, font, rect, accent,
+                Rectangle status = new Rectangle(10, Height - 25, Width - 20, 19);
+                TextRenderer.DrawText(g, StatusText, font, status, accent,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                     TextFormatFlags.EndEllipsis);
             }
+        }
+
+        private static GraphicsPath Rounded(Rectangle r, int radius)
+        {
+            int d = Math.Max(2, radius * 2);
+            GraphicsPath p = new GraphicsPath();
+            p.AddArc(r.Left, r.Top, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Top, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.Left, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
         }
     }
 }
