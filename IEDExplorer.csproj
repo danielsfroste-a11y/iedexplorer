@@ -476,6 +476,7 @@
     <Compile Include="HexBox\NativeMethods.cs" />
     <Compile Include="HexBox\Util.cs" />
     <Compile Include="Iec61850Controller.cs" />
+    <Compile Include="Views\ScadaView.cs" />
     <Compile Include="Iec61850Model.cs" />
     <Compile Include="IsoLayers.cs" />
     <Compile Include="MMSCapture.cs" />
