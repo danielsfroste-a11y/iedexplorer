@@ -260,16 +260,16 @@ namespace IEDExplorer.Views
             if ((position == BreakerPosition.Open && targetValue == 1) ||
                 (position == BreakerPosition.Closed && targetValue == 2)) return false;
             int model = ControlModelValue;
-            // Only the 2-bit IEC DPC control type is accepted here, with a real
-            // 2-bit Pos status read and either direct (1) or SBOw (4) control model.
+            // DPC Pos.stVal is two-bit Dbpos; DPC CO ctlVal is BOOLEAN
+            // (false=open, true=closed).
             if (Position == null || Position.DataType != scsm_MMS_TypeEnum.bit_string ||
                 !(Position.DataParam is int) || (int)Position.DataParam != 6)
                 return false;
             if (Operate == null || !Operate.isLeaf() ||
-                Operate.DataType != scsm_MMS_TypeEnum.bit_string)
+                Operate.DataType != scsm_MMS_TypeEnum.boolean)
                 return false;
             if (model == 4 && (SelectWithValue == null || !SelectWithValue.isLeaf() ||
-                SelectWithValue.DataType != scsm_MMS_TypeEnum.bit_string))
+                SelectWithValue.DataType != scsm_MMS_TypeEnum.boolean))
                 return false;
             if (model != 1 && model != 4) return false;
 

@@ -770,24 +770,24 @@ namespace IEDExplorer.Views
             int model = binding.ControlModelValue;
             if (request == null || (model != 1 && model != 4) ||
                 (int)request.CommandFlowFlag != model ||
-                request.DataType != scsm_MMS_TypeEnum.bit_string)
+                request.DataType != scsm_MMS_TypeEnum.boolean)
                 return false;
-            request.ctlVal = ScadaBreakerBinding.EncodeDpc(target);
-            request.BitStringTrailingBits = 6;
+            // IEC DPC ctlVal is a Boolean, unlike its Dbpos indication.
+            request.ctlVal = target == 2;
+            request.BitStringTrailingBits = null;
             request.interlockCheck = true;
             request.synchroCheck = true;
             request.Test = false;
             request.SBOrun = model == 4;
 
-            // The specialized breaker chooser already selected and confirmed the
-            // exact target. Unlike the legacy generic dialog, it does not confuse
-            // DPC (open/closed) with binary-step control (higher/lower).
+            // The specialized breaker chooser already confirmed open/close.
+            // A DPC ctlVal uses false=Open and true=Close.
             if (model == 4)
             {
                 NodeData select = binding.SelectWithValue;
                 if (select == null || select.Parent == null ||
                     select.Parent.Name != "SBOw" ||
-                    select.DataType != scsm_MMS_TypeEnum.bit_string)
+                    select.DataType != scsm_MMS_TypeEnum.boolean)
                     return false;
                 MmsWriteReceipt selectReply = new MmsWriteReceipt();
                 state.Controller.SendCommand(select, request, ActionRequested.WriteAsStructure, selectReply);

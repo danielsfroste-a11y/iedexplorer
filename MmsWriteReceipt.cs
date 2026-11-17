@@ -25,3 +25,5 @@ namespace IEDExplorer
             return object.ReferenceEquals(finished, completion.Task) && await completion.Task;
         }
     }
+
+}

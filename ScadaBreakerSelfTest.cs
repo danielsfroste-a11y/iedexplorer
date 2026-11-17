@@ -75,14 +75,14 @@ namespace IEDExplorer
             st.DataType = scsm_MMS_TypeEnum.bit_string;
             st.DataValue = new byte[] { 0x80 };
             st.DataParam = 6;
-            ctl.DataType = scsm_MMS_TypeEnum.bit_string;
-            ctl.DataValue = new byte[] { 0x80 };
+            ctl.DataType = scsm_MMS_TypeEnum.boolean;
+            ctl.DataValue = true;
             NodeBase sbow = Add(posCo, new NodeData("SBOw"));
             NodeData sbowCtl = (NodeData)Add(sbow, new NodeData("ctlVal")
-                { DataType = scsm_MMS_TypeEnum.bit_string, DataValue = new byte[] { 0x80 } });
+                { DataType = scsm_MMS_TypeEnum.boolean, DataValue = true });
             b.Rebind(root);
             Check(b.PositionValue == BreakerPosition.Closed, "REX status from bit string");
-            Check(b.SelectWithValue == sbowCtl && b.CanCommand(1), "SBOw bit-string close->open must work");
+            Check(b.SelectWithValue == sbowCtl && b.CanCommand(1), "SBOw boolean close->open must work");
             Check(!b.CanCommand(2), "SBOw must not re-close closed breaker");
             model.DataValue = (long)1;
             Check(b.CanCommand(1), "direct DPC control should work");
