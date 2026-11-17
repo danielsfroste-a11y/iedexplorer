@@ -191,6 +191,12 @@ namespace IEDExplorer.Views
                 scadaWindow.Show();
         }
 
+        internal void AddScadaBreaker(NodeBase source)
+        {
+            ShowScadaView();
+            if (scadaWindow != null) scadaWindow.AddBreaker(source);
+        }
+
         internal void AddScadaSignal(NodeBase signal, bool asCommand)
         {
             ShowScadaView();
