@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: scada-fat-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Compile legacy WinForms
@@ -20,6 +24,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Build with Visual Studio MSBuild
         shell: powershell
         run: |
@@ -31,10 +37,8 @@ jobs:
           Write-Host "MSBuild: $msbuild"
           & $msbuild IEDExplorer.sln /t:Build /p:Configuration=Release '/p:Platform=Any CPU' /m:1 /v:minimal /nologo
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Upload FAT test build (3 day retention)
-        uses: actions/upload-artifact@v4
-        with:
-          name: IEDExplorer-SCADA-FAT
-          path: bin/Release/
-          if-no-files-found: error
-          retention-days: 3
+      - name: Build output location
+        shell: powershell
+        run: |
+          Write-Host "Compiled output stays on the local runner in: $PWD\bin\Release"
+          Write-Host "No Actions artifacts are uploaded, to conserve storage quota."
