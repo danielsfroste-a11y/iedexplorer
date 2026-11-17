@@ -1,4 +1,4 @@
-name: Windows SCADA FAT build
+name: Windows SCADA FAT build and local deploy
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - "**/*.cs"
       - "**/*.csproj"
       - "**/*.sln"
+      - "scripts/build-deploy.cmd"
       - ".github/workflows/scada-build.yml"
   workflow_dispatch:
 
@@ -19,26 +20,14 @@ concurrency:
 
 jobs:
   build:
-    name: Compile legacy WinForms
-    runs-on: [self-hosted, Windows]
-    timeout-minutes: 15
+    name: Build and install on Windows runner
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source code
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Build with Visual Studio MSBuild
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-          if (-not (Test-Path $vswhere)) { throw 'Visual Studio Build Tools / vswhere not found on the runner' }
-          $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
-          if (-not $msbuild) { throw 'MSBuild not found via vswhere' }
-          Write-Host "MSBuild: $msbuild"
-          & $msbuild IEDExplorer.sln /t:Build /p:Configuration=Release '/p:Platform=Any CPU' /m:1 /v:minimal /nologo
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build output location
-        shell: powershell
-        run: |
-          Write-Host "Compiled output stays on the local runner in: $PWD\bin\Release"
-          Write-Host "No Actions artifacts are uploaded, to conserve storage quota."
+      - name: Compile and deploy to runner folder
+        shell: cmd
+        run: call scripts\build-deploy.cmd
