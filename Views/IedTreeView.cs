@@ -1199,7 +1199,7 @@ namespace IEDExplorer.Views
         private void treeViewIed_MouseDown(object sender, MouseEventArgs e)
         {
             nodeToDrag = ((TreeView)sender).GetNodeAt(e.Location);
-            if (e.Button == MouseButtons.Left && nodeToDrag != null && (nodeToDrag.Tag is NodeData || nodeToDrag.Tag is NodeDO))
+            if (e.Button == MouseButtons.Left && nodeToDrag != null && (nodeToDrag.Tag is NodeData || nodeToDrag.Tag is NodeDO || (nodeToDrag.Tag is NodeLN && ScadaBreakerBinding.IsBreakerCandidate((NodeBase)nodeToDrag.Tag))))
             {
                 // Remember the point where the mouse down occurred. The DragSize indicates
                 // the size that the mouse can move before a drag event should be started.                
