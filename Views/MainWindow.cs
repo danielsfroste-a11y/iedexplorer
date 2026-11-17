@@ -50,6 +50,13 @@ namespace IEDExplorer.Views
             worker = new Scsm_MMS_Worker();
 
             wm = new WindowManager(dockPanel1, this);
+            var scadaButton = new ToolStripButton("SCADA / FAT")
+            {
+                DisplayStyle = ToolStripItemDisplayStyle.Text,
+                ToolTipText = "Open the IEC 61850 FAT monitoring dashboard"
+            };
+            scadaButton.Click += delegate { wm.ShowScadaView(); };
+            toolStrip1.Items.Add(scadaButton);
             this.Text = "IED Explorer 0.79g Exp SCL Server & GOOSE";
 
             logger.LogInfo("Starting main program ...");
