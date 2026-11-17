@@ -24,6 +24,14 @@ namespace IEDExplorer.Views
             internal string Address;
             internal string Caption;
             internal bool IsCommand;
+            internal bool IsBreaker;
+            internal ScadaBreakerBinding Breaker;
+            internal BreakerGlyph Glyph;
+            internal bool CommandPending;
+            internal bool CommandInFlight;
+            internal int PendingTarget;
+            internal DateTime PendingSince;
+            internal string CommandWarning;
             internal NodeData Node;
             internal string LastValue;
             internal DateTime LastChanged;
@@ -47,7 +55,8 @@ namespace IEDExplorer.Views
         private static readonly Color Ink = Color.FromArgb(29, 48, 71);
         private static readonly Color Muted = Color.FromArgb(111, 128, 145);
         private static readonly Color Blue = Color.FromArgb(32, 99, 188);
-        private static readonly Color Background = Color.FromArgb(245, 248, 252);
+        private static readonly Color Background = Color.FromArgb(242, 246, 250);
+        private static readonly Color Teal = Color.FromArgb(18, 143, 135);
 
         public ScadaView(WindowManager windowManager)
         {
@@ -133,6 +142,13 @@ namespace IEDExplorer.Views
         /// <summary>Called by the IEC/MMS tree's context menu or the drop target.</summary>
         public void AddSignal(NodeBase node, bool asCommand)
         {
+            // An IEC 61850 switch Pos selected for control becomes one coherent
+            // breaker object, not a bare MMS write button.
+            if (asCommand && ScadaBreakerBinding.IsBreakerCandidate(node))
+            {
+                AddBreaker(node);
+                return;
+            }
             if (!IsLeaf(node))
             {
                 MessageBox.Show(this, "Select an individual leaf data attribute (for example stVal, mag.f or Oper.ctlVal.i).",
@@ -181,15 +197,63 @@ namespace IEDExplorer.Views
             RefreshCards();
         }
 
+        public void AddBreaker(NodeBase node)
+        {
+            Iec61850State state;
+            if (!IsOnline(out state))
+            {
+                MessageBox.Show(this, "Anslut till reläskyddet och läs in MMS-modellen först.",
+                    "Ingen IEC 61850-anslutning", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (!string.IsNullOrEmpty(profileHost) &&
+                !string.Equals(profileHost, state.hostname, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this, "Stationsbilden är knuten till " + profileHost +
+                    " och får inte användas mot " + state.hostname + ".", "IED mismatch",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            ScadaBreakerBinding model = ScadaBreakerBinding.FromNode(node, state.DataModel.ied);
+            if (model == null)
+            {
+                MessageBox.Show(this, "Ingen Pos.stVal hittades på vald CSWI/XCBR-nod. " +
+                    "Välj brytarens Pos-objekt eller logiska nod i trädet.",
+                    "Brytarobjekt", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (cards.Any(c => c.IsBreaker && c.Address == model.Key)) return;
+            if (cards.Count >= 200) return;
+            if (string.IsNullOrEmpty(profileHost)) profileHost = state.hostname;
+            SignalCard card = new SignalCard
+            {
+                IsBreaker = true, Address = model.Key,
+                Caption = model.LogicalNode, Node = model.Position, Breaker = model
+            };
+            cards.Add(card);
+            CreateCard(card);
+            ReadVisibleCards(15);
+            RefreshCards();
+        }
+
         private void OnDragEnter(object sender, DragEventArgs e)
         {
-            e.Effect = e.Data.GetDataPresent(typeof(NodeData)) ? DragDropEffects.Link : DragDropEffects.None;
+            e.Effect = e.Data.GetDataPresent(typeof(NodeData)) ||
+                e.Data.GetDataPresent(typeof(NodeDO)) ||
+                e.Data.GetDataPresent(typeof(NodeLN)) ? DragDropEffects.Link : DragDropEffects.None;
         }
 
         private void OnDragDrop(object sender, DragEventArgs e)
         {
-            NodeBase node = e.Data.GetData(typeof(NodeData)) as NodeBase;
+            NodeBase node = e.Data.GetData(typeof(NodeData)) as NodeBase ??
+                e.Data.GetData(typeof(NodeDO)) as NodeBase ??
+                e.Data.GetData(typeof(NodeLN)) as NodeBase;
             if (node == null) return;
+            if (ScadaBreakerBinding.IsBreakerCandidate(node))
+            {
+                AddBreaker(node);
+                return;
+            }
             // Controls must be deliberately selected, never silently made operable by a drop.
             if (IsControlNode(node))
             {
@@ -202,39 +266,60 @@ namespace IEDExplorer.Views
             else AddSignal(node, false);
         }
 
+        private static void StyleTile(Panel tile, Color accent)
+        {
+            tile.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                var r = new Rectangle(0, 0, tile.Width - 1, tile.Height - 1);
+                using (var pen = new Pen(Color.FromArgb(219, 228, 238)))
+                    e.Graphics.DrawRectangle(pen, r);
+                using (var brush = new SolidBrush(accent))
+                    e.Graphics.FillRectangle(brush, 0, 0, 4, tile.Height);
+                using (var line = new Pen(Color.FromArgb(234, 239, 245)))
+                    e.Graphics.DrawLine(line, 18, tile.Height - 48, tile.Width - 18, tile.Height - 48);
+            };
+        }
+
         private void CreateCard(SignalCard card)
         {
+            if (card.IsBreaker)
+            {
+                CreateBreakerCard(card);
+                return;
+            }
             var tile = new Panel
             {
-                Width = 256,
-                Height = 174,
+                Width = 282,
+                Height = 190,
                 BackColor = Color.White,
-                Margin = new Padding(9),
-                BorderStyle = BorderStyle.FixedSingle,
-                Padding = new Padding(14),
+                Margin = new Padding(10),
+                BorderStyle = BorderStyle.None,
+                Padding = new Padding(16),
                 AllowDrop = true
             };
+            StyleTile(tile, card.IsCommand ? Color.FromArgb(196, 112, 50) : Teal);
             tile.DragEnter += OnDragEnter;
             tile.DragDrop += OnDragDrop;
 
             var caption = new Label
             {
                 Text = card.Caption,
-                Left = 13, Top = 12, Width = 225, Height = 40,
+                Left = 18, Top = 19, Width = 245, Height = 42,
                 ForeColor = Ink, Font = new Font("Segoe UI", 10, FontStyle.Bold),
                 AutoEllipsis = true
             };
             var value = new Label
             {
                 Text = card.IsCommand ? "COMMAND" : "—",
-                Left = 13, Top = 57, Width = 225, Height = 43,
-                ForeColor = Blue, Font = new Font("Segoe UI", 20, FontStyle.Bold),
+                Left = 18, Top = 72, Width = 245, Height = 58,
+                ForeColor = Ink, Font = new Font("Segoe UI Semibold", 26, FontStyle.Bold),
                 AutoEllipsis = true
             };
             var detail = new Label
             {
                 Text = card.Address,
-                Left = 13, Top = 112, Width = 225, Height = 44,
+                Left = 18, Top = 145, Width = 245, Height = 34,
                 ForeColor = Muted, Font = new Font("Segoe UI", 8),
                 AutoEllipsis = true
             };
@@ -251,7 +336,7 @@ namespace IEDExplorer.Views
                 var button = new Button
                 {
                     Text = "Select / Operate...",
-                    Left = 13, Top = 61, Width = 225, Height = 38,
+                    Left = 18, Top = 77, Width = 245, Height = 40,
                     BackColor = Color.FromArgb(232, 240, 252),
                     ForeColor = Ink,
                     FlatStyle = FlatStyle.Flat,
@@ -276,6 +361,231 @@ namespace IEDExplorer.Views
             detail.ContextMenuStrip = menu;
             if (card.Control != null) card.Control.ContextMenuStrip = menu;
             surface.Controls.Add(tile);
+        }
+
+        private void CreateBreakerCard(SignalCard card)
+        {
+            Panel tile = new Panel
+            {
+                Width = 292, Height = 294, BackColor = Color.White,
+                Margin = new Padding(10), BorderStyle = BorderStyle.None,
+                AllowDrop = true
+            };
+            StyleTile(tile, Blue);
+            tile.DragEnter += OnDragEnter;
+            tile.DragDrop += OnDragDrop;
+            Label caption = new Label
+            {
+                Text = card.Caption, Left = 18, Top = 15, Width = 250, Height = 29,
+                Font = new Font("Segoe UI", 11, FontStyle.Bold), ForeColor = Ink,
+                AutoEllipsis = true
+            };
+            Label hint = new Label
+            {
+                Text = "IEC 61850 • DOUBLE POINT",
+                Left = 18, Top = 45, Width = 250, Height = 22,
+                Font = new Font("Segoe UI", 8), ForeColor = Muted
+            };
+            BreakerGlyph glyph = new BreakerGlyph
+            {
+                Left = 33, Top = 69, Width = 224, Height = 119,
+                Anchor = AnchorStyles.Top
+            };
+            glyph.Click += delegate { OpenBreakerControls(card); };
+            Label details = new Label
+            {
+                Left = 18, Top = 203, Width = 254, Height = 72,
+                ForeColor = Muted, Font = new Font("Segoe UI", 8),
+                AutoEllipsis = true
+            };
+            tile.Controls.Add(caption);
+            tile.Controls.Add(hint);
+            tile.Controls.Add(glyph);
+            tile.Controls.Add(details);
+            card.Panel = tile;
+            card.Glyph = glyph;
+            card.Detail = details;
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("Byt namn", null, delegate { RenameCard(card, caption); });
+            menu.Items.Add("Visa signalbindningar", null, delegate { ShowBreakerBindings(card); });
+            menu.Items.Add("Ta bort objektet", null, delegate
+            {
+                cards.Remove(card);
+                surface.Controls.Remove(tile);
+                tile.Dispose();
+            });
+            tile.ContextMenuStrip = caption.ContextMenuStrip = hint.ContextMenuStrip =
+                glyph.ContextMenuStrip = details.ContextMenuStrip = menu;
+            surface.Controls.Add(tile);
+        }
+
+        private void ShowBreakerBindings(SignalCard card)
+        {
+            ScadaBreakerBinding b = card.Breaker;
+            if (b == null)
+            {
+                MessageBox.Show(this, "Brytaren är inte bunden till en aktiv MMS-modell.");
+                return;
+            }
+            MessageBox.Show(this, "Lägesindikering:\n" + b.StatusAddress +
+                "\n\nKvalitet:\n" + b.QualityAddress +
+                "\n\nTidsstämpel:\n" + b.TimestampAddress +
+                "\n\nKontrollmodell:\n" + b.ControlModelAddress +
+                "\n\nManöveradress:\n" + b.OperateAddress +
+                "\n\n" + b.ControlSummary,
+                "IEC 61850-bindningar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void RefreshBreakerCard(SignalCard card, bool online)
+        {
+            ScadaBreakerBinding b = card.Breaker;
+            BreakerPosition position = online && b != null ? b.PositionValue : BreakerPosition.Unknown;
+            bool qualityGood = online && b != null && b.QualityGood;
+            if (card.CommandPending && b != null && b.PositionValue ==
+                (card.PendingTarget == 1 ? BreakerPosition.Open : BreakerPosition.Closed))
+            {
+                card.CommandPending = false;
+                card.CommandWarning = "";
+            }
+            if (card.CommandPending && DateTime.UtcNow.Subtract(card.PendingSince).TotalSeconds > 18)
+            {
+                card.CommandPending = false;
+                card.CommandWarning = "Ingen verifierad lägesändring efter manöver";
+            }
+            BreakerGlyph glyph = card.Glyph;
+            glyph.Position = position;
+            glyph.Online = online;
+            glyph.QualityGood = qualityGood;
+            glyph.StatusText = !online ? "OFFLINE" :
+                b == null || b.Position == null || b.Position.DataValue == null ? "EJ AVLÄST" :
+                position == BreakerPosition.Open ? "ÖPPEN" :
+                position == BreakerPosition.Closed ? "SLUTEN" :
+                position == BreakerPosition.Intermediate ? "MELLANLÄGE" :
+                position == BreakerPosition.Bad ? "OGILTIGT LÄGE" : "OKÄNT LÄGE";
+            glyph.Invalidate();
+            if (b == null)
+            {
+                card.Detail.Text = card.Address + "\nInväntar MMS-modell";
+                return;
+            }
+            string stamp = "";
+            if (b.Timestamp != null && b.Timestamp.DataValue != null)
+                stamp = "\nIED-tid: " + b.Timestamp.StringValue;
+            card.Detail.Text = b.LogicalNode + " • " + b.ControlSummary +
+                "\n" + b.QualitySummary + stamp +
+                (card.CommandPending ? "\nINVÄNTAR LÄGESKVITTENS" : "") +
+                (string.IsNullOrEmpty(card.CommandWarning) ? "" : "\n" + card.CommandWarning);
+        }
+
+        private void OpenBreakerControls(SignalCard card)
+        {
+            Iec61850State state;
+            if (!IsOnline(out state) || boundIed != state || card.Breaker == null ||
+                !string.Equals(profileHost, state.hostname, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this, "Brytarobjektet är offline eller bundet till ett annat skydd.",
+                    "Manöver ej tillgänglig", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            ScadaBreakerBinding b = card.Breaker;
+            if (card.CommandPending)
+            {
+                MessageBox.Show(this, "Tidigare manöver inväntar lägesåterkoppling. " +
+                    "Inga upprepade kommandon skickas automatiskt.",
+                    "Manöver pågår", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (!allowControls.Checked)
+            {
+                MessageBox.Show(this, "Manövrering är spärrad. Aktivera 'Enable controls' " +
+                    "i verktygsfältet för att välja manöver.\n\n" + b.ControlSummary,
+                    "Enbart övervakning", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            using (var chooser = new Form
+            {
+                Text = "Brytarmanöver – " + card.Caption,
+                Width = 460, Height = 260,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false, MinimizeBox = false,
+                StartPosition = FormStartPosition.CenterParent
+            })
+            {
+                Label header = new Label
+                {
+                    Left = 20, Top = 18, Width = 405, Height = 76,
+                    Font = new Font("Segoe UI", 10),
+                    Text = "Relä: " + state.hostname + "\nObjekt: " + b.Key +
+                        "\nLäge: " + card.Glyph.StatusText + " | " + b.QualitySummary
+                };
+                Label info = new Label
+                {
+                    Left = 20, Top = 107, Width = 405, Height = 45,
+                    Text = b.ControlSummary + "\nIngen manöver skickas förrän målvalet bekräftats.",
+                    ForeColor = Muted
+                };
+                Button open = new Button
+                {
+                    Text = "FRÅNSLAG", Left = 20, Top = 167, Width = 188, Height = 38,
+                    Enabled = b.CanCommand(1)
+                };
+                Button close = new Button
+                {
+                    Text = "TILLSLAG", Left = 226, Top = 167, Width = 188, Height = 38,
+                    Enabled = b.CanCommand(2)
+                };
+                open.Click += delegate { RequestBreakerCommand(card, 1, chooser); };
+                close.Click += delegate { RequestBreakerCommand(card, 2, chooser); };
+                chooser.Controls.AddRange(new Control[] { header, info, open, close });
+                chooser.ShowDialog(this);
+            }
+        }
+
+        private async void RequestBreakerCommand(SignalCard card, int target, Form chooser)
+        {
+            Iec61850State state;
+            if (!allowControls.Checked || !IsOnline(out state) || state != boundIed ||
+                card.Breaker == null || !card.Breaker.CanCommand(target) ||
+                !string.Equals(profileHost, state.hostname, StringComparison.OrdinalIgnoreCase)) return;
+
+            string targetText = target == 1 ? "FRÅNSLAG" : "TILLSLAG";
+            DialogResult response = MessageBox.Show(chooser,
+                "Skicka " + targetText + " via IEC 61850 till:\n\n" +
+                state.hostname + "\n" + card.Breaker.OperateAddress +
+                "\n\nDetta är en verklig manöver om reläets utgångar är inkopplade.",
+                "Bekräfta manöver", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+            if (response != DialogResult.Yes) return;
+
+            // Actual command packaging and the final IEC command dialog live in the
+            // original client's control stack; the UI never writes an MMS value itself.
+            chooser.Close();
+            card.CommandPending = true;
+            card.CommandInFlight = true;
+            card.PendingSince = DateTime.UtcNow;
+            card.PendingTarget = target;
+            card.CommandWarning = "";
+            RefreshCards();
+            bool accepted = false;
+            try
+            {
+                accepted = await manager.ExecuteScadaBreakerCommandAsync(card.Breaker, target);
+            }
+            catch (Exception ex)
+            {
+                Logger.getLogger().LogError("SCADA breaker command error: " + ex.Message);
+            }
+            card.CommandInFlight = false;
+            if (!accepted)
+            {
+                card.CommandPending = false;
+                card.CommandWarning = "Kommandot nekades eller blev inte kvitterat";
+                RefreshCards();
+                return;
+            }
+            // Keep the symbol unchanged until a new Pos.stVal reports target.
+            ReadVisibleCards(12);
+            RefreshCards();
         }
 
         private void RenameCard(SignalCard card, Label caption)
@@ -324,7 +634,14 @@ namespace IEDExplorer.Views
                 boundIed = state;
                 foreach (SignalCard card in cards)
                 {
-                    card.Node = state == null ? null : state.DataModel.ied.FindNodeByAddress(card.Address) as NodeData;
+                    if (card.IsBreaker)
+                    {
+                        card.Breaker = state == null ? null :
+                            ScadaBreakerBinding.FromKey(card.Address, state.DataModel.ied);
+                        card.Node = card.Breaker == null ? null : card.Breaker.Position;
+                    }
+                    else
+                        card.Node = state == null ? null : state.DataModel.ied.FindNodeByAddress(card.Address) as NodeData;
                     card.LastValue = null;
                     card.LastChanged = DateTime.MinValue;
                 }
@@ -346,6 +663,11 @@ namespace IEDExplorer.Views
                            string.Equals(profileHost, state.hostname, StringComparison.OrdinalIgnoreCase));
             foreach (SignalCard card in cards)
             {
+                if (card.IsBreaker)
+                {
+                    RefreshBreakerCard(card, online);
+                    continue;
+                }
                 if (card.Control != null)
                     card.Control.Enabled = online && allowControls.Checked && IsControlNode(card.Node);
                 if (card.IsCommand)
@@ -369,7 +691,7 @@ namespace IEDExplorer.Views
                     card.LastChanged = DateTime.Now;
                 }
                 card.Value.Text = current;
-                card.Value.ForeColor = Blue; // No inferred open/closed/tripped semantics from bare booleans.
+                card.Value.ForeColor = Ink; // Neutral numerical value; no inferred alarm semantics.
                 card.Detail.Text = card.Address + "\n" +
                     (card.LastChanged == DateTime.MinValue ? "No value received" :
                      "Value changed " + card.LastChanged.ToString("HH:mm:ss"));
@@ -380,15 +702,20 @@ namespace IEDExplorer.Views
         {
             Iec61850State state;
             if (!IsOnline(out state) || boundIed != state) return;
+            // Do not overload the MMS queue while a breaker Select/Operate transaction runs.
+            if (cards.Any(x => x.CommandInFlight)) return;
             if (!string.IsNullOrEmpty(profileHost) &&
                 !string.Equals(profileHost, state.hostname, StringComparison.OrdinalIgnoreCase)) return;
-            var readable = cards.Where(x => !x.IsCommand && x.Node != null).ToArray();
+            var readable = cards.SelectMany(x => x.IsBreaker
+                ? (x.Breaker == null ? Enumerable.Empty<NodeData>() : x.Breaker.MonitoredNodes())
+                : (!x.IsCommand && x.Node != null ? new[] { x.Node } : Enumerable.Empty<NodeData>()))
+                .Where(x => x != null).Distinct().ToArray();
             if (readable.Length == 0) return;
             int count = Math.Min(limit, readable.Length);
             for (int i = 0; i < count; i++)
             {
                 if (state.SendQueue.Count > 30) break; // Do not flood the MMS worker.
-                var node = readable[nextRead % readable.Length].Node;
+                var node = readable[nextRead % readable.Length];
                 nextRead++;
                 state.Send(new NodeBase[] { node }, node.CommAddress, ActionRequested.Read);
             }
@@ -440,7 +767,7 @@ namespace IEDExplorer.Views
                         cards.Select(x => new XElement("Card",
                             new XAttribute("address", x.Address),
                             new XAttribute("caption", x.Caption),
-                            new XAttribute("kind", x.IsCommand ? "command" : "value"))))).Save(dialog.FileName);
+                            new XAttribute("kind", x.IsBreaker ? "breaker" : x.IsCommand ? "command" : "value"))))).Save(dialog.FileName);
                 }
                 catch (Exception ex)
                 {
@@ -448,6 +775,14 @@ namespace IEDExplorer.Views
                                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
+        }
+
+        private static bool IsValidBreakerKey(string address)
+        {
+            string[] parts = address.Split('/');
+            return parts.Length == 2 && parts[0].Length > 0 &&
+                parts[0].Length <= 80 && parts[1].Length <= 80 &&
+                ScadaBreakerBinding.IsBreakerLogicalNode(parts[1]);
         }
 
         private void OpenLayout()
@@ -475,9 +810,12 @@ namespace IEDExplorer.Views
                         string kind = (string)element.Attribute("kind");
                         if (string.IsNullOrEmpty(address) || address.Length > 300 ||
                             !address.Contains("/") || string.IsNullOrEmpty(caption) || caption.Length > 200 ||
-                            (kind != "value" && kind != "command"))
+                            (kind != "value" && kind != "command" && kind != "breaker"))
                             throw new InvalidDataException("Invalid SCADA card");
-                        loaded.Add(new SignalCard { Address = address, Caption = caption, IsCommand = kind == "command" });
+                        if (kind == "breaker" && !IsValidBreakerKey(address))
+                            throw new InvalidDataException("Invalid breaker binding");
+                        loaded.Add(new SignalCard { Address = address, Caption = caption,
+                            IsCommand = kind == "command", IsBreaker = kind == "breaker" });
                     }
                     foreach (Control old in surface.Controls.Cast<Control>().ToList())
                     {

@@ -538,6 +538,12 @@ namespace IEDExplorer.Views
                         item.Tag = n;
                         item.Click += new EventHandler(OnSendCommandClick);
                     }
+                    if (ScadaBreakerBinding.IsBreakerCandidate(n))
+                    {
+                        item = menu.Items.Add("Add to SCADA / breaker symbol");
+                        item.Tag = n;
+                        item.Click += new EventHandler(OnAddBreakerClick);
+                    }
                     // Add individual data attributes to the FAT dashboard.
                     if (n is NodeData && !(n is NodeDO) && n.isLeaf())
                     {
@@ -737,9 +743,81 @@ namespace IEDExplorer.Views
             winMgr.AddScadaSignal((NodeBase)(sender as ToolStripItem).Tag, false);
         }
 
+        void OnAddBreakerClick(object sender, EventArgs e)
+        {
+            winMgr.AddScadaBreaker((NodeBase)(sender as ToolStripItem).Tag);
+        }
+
         void OnAddScadaCommandClick(object sender, EventArgs e)
         {
             winMgr.AddScadaSignal((NodeBase)(sender as ToolStripItem).Tag, true);
+        }
+
+        internal async Task<bool> OpenBreakerCommandAsync(ScadaBreakerBinding binding, int target)
+        {
+            if (binding == null || !binding.CanCommand(target) ||
+                binding.Operate == null || (target != 1 && target != 2))
+                return false;
+            NodeData operate = binding.Operate;
+            Iec61850State state = operate.GetIecs();
+            if (state == null || state != winMgr.mainWindow.Get_iecf() ||
+                state.tstate != TcpProtocolState.TCP_CONNECTED ||
+                state.ostate != IsoProtocolState.OSI_CONNECTED ||
+                state.istate != Iec61850lStateEnum.IEC61850_FREILAUF)
+                return false;
+
+            CommandParams request = state.Controller.PrepareSendCommand(operate);
+            int model = binding.ControlModelValue;
+            if (request == null || (model != 1 && model != 4) ||
+                (int)request.CommandFlowFlag != model ||
+                request.DataType != scsm_MMS_TypeEnum.boolean)
+                return false;
+            // IEC DPC ctlVal is a Boolean, unlike its Dbpos indication.
+            request.ctlVal = target == 2;
+            request.BitStringTrailingBits = null;
+            request.interlockCheck = true;
+            request.synchroCheck = true;
+            request.Test = false;
+            request.SBOrun = model == 4;
+
+            // The specialized breaker chooser already confirmed open/close.
+            // A DPC ctlVal uses false=Open and true=Close.
+            if (model == 4)
+            {
+                NodeData select = binding.SelectWithValue;
+                if (select == null || select.Parent == null ||
+                    select.Parent.Name != "SBOw" ||
+                    select.DataType != scsm_MMS_TypeEnum.boolean)
+                    return false;
+                MmsWriteReceipt selectReply = new MmsWriteReceipt();
+                state.Controller.SendCommand(select, request, ActionRequested.WriteAsStructure, selectReply);
+                bool selectAccepted = await selectReply.WaitForAckAsync(8000);
+                if (!selectAccepted)
+                {
+                    MessageBox.Show(this, "SBOw Select nekades eller fick inget svar. " +
+                        "Operate skickades INTE.", "Brytarmanöver", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return false;
+                }
+                // Never Operate if the transport/model/quality/position changed while
+                // waiting for select acknowledgement.
+                if (state != winMgr.mainWindow.Get_iecf() ||
+                    state.istate != Iec61850lStateEnum.IEC61850_FREILAUF ||
+                    !binding.CanCommand(target)) return false;
+            }
+
+            MmsWriteReceipt operateReply = new MmsWriteReceipt();
+            state.Controller.SendCommand(operate, request, ActionRequested.WriteAsStructure, operateReply);
+            bool writeAccepted = await operateReply.WaitForAckAsync(8000);
+            if (!writeAccepted)
+            {
+                MessageBox.Show(this, "Operate nekades eller fick inget MMS-svar. " +
+                    "Kontrollera reläets händelselogg och fysiskt läge.",
+                    "Brytarmanöver", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+            // A successful write acknowledgement does NOT mean that the breaker
+            // has moved. The SCADA symbol remains driven only by Pos.stVal.
+            return true;
         }
 
         internal void OpenControlDialog(NodeBase signal)
@@ -1133,7 +1211,7 @@ namespace IEDExplorer.Views
         private void treeViewIed_MouseDown(object sender, MouseEventArgs e)
         {
             nodeToDrag = ((TreeView)sender).GetNodeAt(e.Location);
-            if (e.Button == MouseButtons.Left && nodeToDrag != null && (nodeToDrag.Tag is NodeData || nodeToDrag.Tag is NodeDO))
+            if (e.Button == MouseButtons.Left && nodeToDrag != null && (nodeToDrag.Tag is NodeData || nodeToDrag.Tag is NodeDO || (nodeToDrag.Tag is NodeLN && ScadaBreakerBinding.IsBreakerCandidate((NodeBase)nodeToDrag.Tag))))
             {
                 // Remember the point where the mouse down occurred. The DragSize indicates
                 // the size that the mouse can move before a drag event should be started.                

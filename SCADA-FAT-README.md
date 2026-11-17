@@ -67,3 +67,32 @@ C:\actions-runner\IEDExplorer-FAT\Start-IEDExplorer-FAT.cmd
 ```
 
 The matching executable stays in `C:\actions-runner\IEDExplorer-FAT\builds\<commit-id>\IEDExplorer.exe` and the current installed commit is recorded in `BUILD-INFO.txt`. A failed compile or transfer does not update the launcher. To avoid exhausting Actions storage, the temporary handoff artifact is deleted after successful local installation. Previous local builds remain accessible and can be removed manually if no longer needed. The workflow **does not auto-launch a Windows GUI** inside the unattended runner session.
+
+## Breaker symbols (IEC 61850; initial XCBR/CSWI release)
+
+A single switch object now binds multiple related **MMS** data attributes automatically:
+- **Pos.stVal** (DPC, IEC 61850 values 0=intermediate, 1=open, 2=closed, 3=bad) drives the drawn symbol. It is NEVER changed optimistically on command send.
+- **Pos.q** (quality) and **Pos.t** (IED timestamp) are displayed; missing or uncertain quality suppresses symbol control.
+- **Pos.ctlModel** (CF) determines the allowed control method.
+- **Pos.Oper.ctlVal** (CO) is identified as the command target. For matching ABB-style function numbers, also monitor **CBCILO#.EnaOpn/EnaCls** and **CBXCBR#.BlkOpn/BlkCls** where available.
+- Drag CSWI/XCBR, Pos, Pos.stVal or its Oper.ctlVal into the panel, or right-click and choose **Add to SCADA / breaker symbol**. No manual linkage is needed when the values are in the same logical node.
+- Save/open profiles as before, with new card kind \`breaker\`; older profiles still work.
+- Click the drawn switch to open a two-choice open/close panel. It displays the actual IED and control address, then requires a separate Yes confirmation and the existing IEDExplorer command parameter dialog. No raw value writes from the symbol itself.
+- The initial symbol control is **deliberately limited to direct-with-normal-security (ctlModel=1)** and valid IEC quality, known open/closed status, required MMS attributes and no known blocks. **SBO models 2/4 and enhanced direct model 3 remain monitoring-only from the symbol** pending verified select acknowledgement/termination handling. This prevents a timed blind Select/Operate sequence.
+- The original IEDExplorer context-menu commands are unchanged; do not use them on connected primary apparatus without an approved test procedure.
+
+### REX615 FAT notes
+The ABB REX615 IEC 61850 model commonly exposes switch control at \`CTRL.CBCSWI1.Pos\` and separate \`CTRL.CBXCBR1.BlkOpn/BlkCls\` and \`CTRL.CBCILO1.EnaOpn/EnaCls\` statuses. Actual logical-device naming may differ due to PCM600/FPN mapping. Only an actual server response, not a guessed file path, determines whether a point exists.
+
+This revision runs deterministic offline model tests and a non-writing TCP/102 reachability probe against the test relaying LAN. TCP reachability alone does **not** confirm MMS association, model read, Reports or IEC control. **No live open/close commands are issued by CI.** Live operation requires the site operator to verify that physical outputs are isolated or the primary apparatus is in a specifically approved test configuration.
+
+### Self tests
+\`IEDExplorer.exe --scada-selftest\` runs synthetic model tests with no network access and writes \`scada-selftest-result.txt\` to the current working directory. \`IEDExplorer.exe --tcp102-probe=192.168.2.10\` performs **only** a TCP port-102 handshake attempt and writes \`tcp102-probe-result.txt\`. It does not send MMS, IEC-61850 or control traffic.
+
+### Optional read-only MMS probe
+Run `IEDExplorer.exe --mms-readonly-probe=192.168.2.10` to start a hidden, time-bounded instance of the existing MMS client, discover up to six real IEC CSWI/XCBR Pos objects, read their public status, quality and control model and write `mms-probe-result.txt`. This command NEVER invokes any control service. The diagnostic is independent of the application GUI; if a service-mode runner does not provide a supported Windows desktop, the probe may be inconclusive even when normal desktop IEC 61850 communication works. CI marks it as diagnostic, not as a build blocker.
+
+### Real REX615 MMS finding (2026-11-17)
+The local runner successfully established an actual MMS association (not just TCP/102) with 192.168.2.10, identifying ABB REX615, logical device \`AA1J1Q01A1CTRL\`, CSWI1 (status only), and **CSWI2 (ctlModel 4, SBOw)**. REX615 Pos.stVal is a **2-bit MMS BIT STRING**, not an integer; this revision decodes the two most significant bits (00=intermediate, 01=open, 10=closed, 11=bad). The IEC DPC control attribute `CO.Pos.Oper.ctlVal` and `CO.Pos.SBOw.ctlVal` is **BOOLEAN** (false=open, true=close); only the status uses the two-bit Dbpos encoding. **SBOw now waits for a positive MMS Write response before Operate**; it aborts on timeout/reject/error. It does not auto-retry. Operate write response is not regarded as physical position confirmation: the symbol waits for Pos.stVal to change and explicitly reports unverified position if it does not. Commands are disabled unless the user manually enables them in the GUI and explicitly confirms the target.
+
+No physical operate command was sent by CI or the read-only live probe. The correct pairing, physical interlocks and open/close behavior must still be confirmed against the isolated FAT hardware prior to any production use.

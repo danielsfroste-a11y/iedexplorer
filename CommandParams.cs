@@ -42,6 +42,8 @@ namespace IEDExplorer
         public bool SBOrun;
         public bool SBOdiffTime;
         public int SBOtimeout;
+        // Explicit bit width for IEC 61850 Dbpos (MMS BIT STRING SIZE 2 => 6 unused bits).
+        public int? BitStringTrailingBits;
     }
 
     public enum OrCat

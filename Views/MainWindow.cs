@@ -39,6 +39,14 @@ namespace IEDExplorer.Views
         {
             return iecf;
         }
+        // Used only by the optional local read-only MMS probe.
+        internal void BeginReadOnlyProbe(string address)
+        {
+            var parameters = new IsoConnectionParameters((IsoAcse.AcseAuthenticationParameter)null);
+            parameters.hostname = address;
+            worker.Start(parameters);
+        }
+
 
         public MainWindow ()
         {

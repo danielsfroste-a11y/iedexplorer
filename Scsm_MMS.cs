@@ -511,11 +511,13 @@ namespace IEDExplorer
             else if (mymmspdu.RejectPDU != null)
             {
                 NodeBase[] operData = removeCall(iecs, mymmspdu.RejectPDU.OriginalInvokeID.Value);
+                CompleteTrackedWrite(operData, false);
                 ReceiveRejectPDU(iecs, mymmspdu);
             }
             else if (mymmspdu.Confirmed_ErrorPDU != null)
             {
                 NodeBase[] operData = removeCall(iecs, mymmspdu.Confirmed_ErrorPDU.InvokeID.Value);
+                CompleteTrackedWrite(operData, false);
                 iecs.logger.LogError("Confirmed_ErrorPDU received - requested operation not possible!!");
             }
             else
@@ -702,21 +704,44 @@ namespace IEDExplorer
                 Logger.getLogger().LogWarning("NVL Not deleted on server: " + nvl.Name);
         }
 
+        private static void CompleteTrackedWrite(NodeBase[] operationData, bool accepted)
+        {
+            if (operationData == null || operationData.Length == 0 || operationData[0] == null) return;
+            MmsWriteReceipt receipt = operationData[0].Tag as MmsWriteReceipt;
+            if (receipt != null) receipt.Complete(accepted);
+        }
+
         private void ReceiveWrite(Iec61850State iecs, Write_Response write, NodeBase[] lastOperationData)
         {
+            bool accepted = true;
+            bool received = false;
             int i = 0;
             try
             {
                 foreach (Write_Response.Write_ResponseChoiceType wrc in write.Value)
                 {
+                    received = true;
+                    string address = lastOperationData != null && i < lastOperationData.Length &&
+                        lastOperationData[i] != null ? lastOperationData[i].IecAddress : "(unknown)";
+                    i++;
                     if (wrc.isFailureSelected())
-                        Logger.getLogger().LogWarning("Write failed for " + lastOperationData[i++].IecAddress + ", failure: " + wrc.Failure.Value.ToString()
-                            + ", (" + Enum.GetName(typeof(DataAccessError), ((DataAccessError)wrc.Failure.Value)) + ")");
-                    if (wrc.isSuccessSelected())
-                        Logger.getLogger().LogInfo("Write succeeded for " + lastOperationData[i++].IecAddress);
+                    {
+                        accepted = false;
+                        Logger.getLogger().LogWarning("Write failed for " + address +
+                            ", failure: " + wrc.Failure.Value.ToString());
+                    }
+                    else if (wrc.isSuccessSelected())
+                        Logger.getLogger().LogInfo("Write acknowledged by MMS for " + address);
+                    else accepted = false;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.getLogger().LogError("Cannot parse MMS write response: " + ex.Message);
+                accepted = false;
+            }
+            // A positive MMS response is not proof of a primary switch operation.
+            CompleteTrackedWrite(lastOperationData, received && accepted);
         }
 
         private void ReceiveInformationReport(Iec61850State iecs, InformationReport Report)

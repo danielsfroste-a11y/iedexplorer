@@ -2,7 +2,7 @@ name: Build and install IEDExplorer FAT
 
 on:
   push:
-    branches: [feature/scada-fat-view]
+    branches: [feature/scada-fat-view, feature/scada-breaker-objects]
     paths:
       - "**/*.cs"
       - "**/*.csproj"
@@ -32,6 +32,15 @@ jobs:
       - name: Compile IEDExplorer (.NET Framework 4.8)
         shell: cmd
         run: msbuild IEDExplorer.sln /t:Rebuild /p:Configuration=Release "/p:Platform=Any CPU" /m:2 /v:minimal /nologo
+      - name: Unit-test breaker binding and fail-closed behavior (no network)
+        shell: cmd
+        run: |
+          start "" /wait "bin\\Release\\IEDExplorer.exe" --scada-selftest
+          if errorlevel 1 exit /b 1
+          if not exist scada-selftest-result.txt exit /b 1
+          type scada-selftest-result.txt
+          findstr /x /c:"PASS" scada-selftest-result.txt
+          if errorlevel 1 exit /b 1
       - name: Check executable
         shell: cmd
         run: |
@@ -65,6 +74,30 @@ jobs:
       - name: Install durable local copy and startup launcher
         shell: cmd
         run: call scripts\deploy-local.cmd
+      - name: Check REX615 TCP port 102 from this local runner (no MMS writes)
+        shell: cmd
+        continue-on-error: true
+        run: |
+          start "" /wait "local-package\\IEDExplorer.exe" --tcp102-probe=192.168.2.10
+          if exist tcp102-probe-result.txt (
+            type tcp102-probe-result.txt
+          ) else (
+            echo No TCP probe report was produced.
+            exit /b 2
+          )
+      - name: Read-only IEC 61850 MMS model probe on REX615
+        shell: cmd
+        continue-on-error: true
+        run: |
+          start "" /wait "local-package\\IEDExplorer.exe" --mms-readonly-probe=192.168.2.10
+          if exist mms-probe-result.txt (
+            type mms-probe-result.txt
+          ) else (
+            echo MMS read-only probe did not produce a result file.
+            exit /b 2
+          )
+          findstr /c:"MMS ASSOCIATION / MODEL READ: OK" mms-probe-result.txt
+          if errorlevel 1 exit /b 2
       - name: Delete temporary handoff from Actions storage
         uses: actions/github-script@v7
         with:

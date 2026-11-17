@@ -149,6 +149,11 @@ namespace IEDExplorer
 
         public void SendCommand(NodeBase data, CommandParams cPar, ActionRequested how)
         {
+            SendCommand(data, cPar, how, null);
+        }
+
+        internal void SendCommand(NodeBase data, CommandParams cPar, ActionRequested how, MmsWriteReceipt receipt)
+        {
             if (data != null)
             {
                 Logger.getLogger().LogInfo("Sending command " + data.IecAddress);
@@ -164,6 +169,10 @@ namespace IEDExplorer
                         NodeData n = new NodeData(b.Name);
                         n.DataType = ((NodeData)b).DataType;
                         n.DataValue = cPar.ctlVal;
+                        if (n.DataType == scsm_MMS_TypeEnum.bit_string)
+                            n.DataParam = cPar.BitStringTrailingBits.HasValue
+                                ? (object)cPar.BitStringTrailingBits.Value
+                                : ((NodeData)b).DataParam;
                         ndar.Add(n);
                     }
                     if ((b = d.FindChildNode("origin")) != null)
@@ -261,6 +270,12 @@ namespace IEDExplorer
                         n.DataValue = new byte[] { check };
                         n.DataParam = ((NodeData)b).DataParam;
                         ndar.Add(n);
+                    }
+                    if (receipt != null)
+                    {
+                        if (ndar.Count == 0) { receipt.Complete(false); return; }
+                        // This is a temporary command NodeData, not a UI model node.
+                        ndar[0].Tag = receipt;
                     }
                     iecs.Send(ndar.ToArray(), d.CommAddress, how);
                 }
