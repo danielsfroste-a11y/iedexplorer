@@ -477,6 +477,9 @@
     <Compile Include="HexBox\Util.cs" />
     <Compile Include="Iec61850Controller.cs" />
     <Compile Include="Views\ScadaView.cs" />
+    <Compile Include="Views\ScadaBreakerBinding.cs" />
+    <Compile Include="Views\BreakerGlyph.cs" />
+    <Compile Include="ScadaBreakerSelfTest.cs" />
     <Compile Include="Iec61850Model.cs" />
     <Compile Include="IsoLayers.cs" />
     <Compile Include="MMSCapture.cs" />
