@@ -61,6 +61,7 @@ namespace IEDExplorer.Views
             automaticReads = new ToolStripButton("Auto read") { Checked = true, CheckOnClick = true, ToolTipText = "Cycle MMS reads for monitored values; reports also update the model." };
             toolbar.Items.Add(automaticReads);
             toolbar.Items.Add(new ToolStripSeparator());
+            toolbar.Items.Add(MakeButton("New layout", NewLayout));
             toolbar.Items.Add(MakeButton("Save layout", SaveLayout));
             toolbar.Items.Add(MakeButton("Open layout", OpenLayout));
             toolbar.Items.Add(new ToolStripSeparator());
@@ -115,7 +116,7 @@ namespace IEDExplorer.Views
             return button;
         }
 
-        private static bool IsControlNode(NodeBase node)
+        internal static bool IsControlNode(NodeBase node)
         {
             if (node == null) return false;
             NodeBase ctl = node.Name == "ctlVal" ? node : node.Parent;
@@ -313,6 +314,8 @@ namespace IEDExplorer.Views
             bool online = IsOnline(out state);
             bool matchingHost = online && (string.IsNullOrEmpty(profileHost) ||
                 string.Equals(profileHost, state.hostname, StringComparison.OrdinalIgnoreCase));
+            // Keep the connected IED for a meaningful mismatch message.
+            Iec61850State connectedIed = state;
             if (!matchingHost) state = null;
 
             if (!object.ReferenceEquals(boundIed, state))
@@ -326,7 +329,7 @@ namespace IEDExplorer.Views
                 }
             }
             connectionLabel.Text = !online ? "OFFLINE  •  Connect an IEC 61850 IED to start monitoring"
-                : !matchingHost ? "IED MISMATCH  •  Layout is bound to " + profileHost + "; connected to " + state.hostname
+                : !matchingHost ? "IED MISMATCH  •  Layout is bound to " + profileHost + "; connected to " + connectedIed.hostname
                 : "MMS CONNECTED  •  " + state.hostname + "  •  " + cards.Count + " configured items";
             connectionLabel.ForeColor = matchingHost ? Color.FromArgb(15, 105, 69) : Color.FromArgb(153, 65, 40);
 
@@ -404,6 +407,23 @@ namespace IEDExplorer.Views
                 return;
 
             manager.ExecuteScadaCommand(card.Node);
+        }
+
+        private void NewLayout()
+        {
+            if (cards.Count > 0 && MessageBox.Show(this, "Discard the current layout (save it first if needed)?",
+                "New layout", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            foreach (Control control in surface.Controls.Cast<Control>().ToList())
+            {
+                surface.Controls.Remove(control);
+                control.Dispose();
+            }
+            cards.Clear();
+            profileHost = "";
+            boundIed = null;
+            nextRead = 0;
+            allowControls.Checked = false;
+            RefreshFromModel();
         }
 
         private void SaveLayout()
