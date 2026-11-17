@@ -74,11 +74,12 @@ namespace IEDExplorer
             get
             {
                 NodeBase nb = Parent;
-                if (nb != null) do
+                while (nb != null)
                 {
                     if (nb is NodeFC)
                         return nb.Name;
-                } while (nb != null);
+                    nb = nb.Parent;
+                }
                 return "";
             }
         }

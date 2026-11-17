@@ -22,6 +22,16 @@ namespace IEDExplorer.Views
         CaptureView captureWindow;
         ReportsView reportWindow;
         PollView pollWindow;
+        ScadaView scadaWindow;
+        // Keep exact handler instances, otherwise reconnects leak old callbacks.
+        private sealed class CaptureSubscriptions
+        {
+            internal CaptureView.CaptureActiveChanged ActiveChanged;
+            internal CaptureView.ClearCapture Clear;
+            internal MMSCaptureDb.NewPacket Packet;
+        }
+        private readonly Dictionary<Iec61850State, CaptureSubscriptions> captureHandlers =
+            new Dictionary<Iec61850State, CaptureSubscriptions>();
 
         public List<int> SCLServers_usedPorts = new List<int>();
         public bool ReportsRunning;
@@ -80,6 +90,11 @@ namespace IEDExplorer.Views
             logWindow.CloseButtonVisible = false;
             logWindow.FormClosing += new FormClosingEventHandler(persistentWindows_FormClosing);
             logWindow.Show(dockPanel);
+
+            scadaWindow = new ScadaView(this);
+            scadaWindow.CloseButtonVisible = false;
+            scadaWindow.FormClosing += new FormClosingEventHandler(persistentWindows_FormClosing);
+            scadaWindow.Show(dockPanel);
 
             //Connect Windows Manager to helper events
             dockPanel.ActiveDocumentChanged += new EventHandler(OnActiveDocumentChanged);
@@ -145,39 +160,48 @@ namespace IEDExplorer.Views
 
         internal void BindToCapture(Iec61850State iecs)
         {
-            captureWindow.OnCaptureActiveChanged += (ca) =>
-            {
-                iecs.CaptureDb.CaptureActive = ca;
-            };
-            captureWindow.OnClearCapture += () =>
-            {
-                iecs.CaptureDb.Clear();
-            };
+            if (captureHandlers.ContainsKey(iecs)) return;
+            var handlers = new CaptureSubscriptions();
+            handlers.ActiveChanged = ca => iecs.CaptureDb.CaptureActive = ca;
+            handlers.Clear = () => iecs.CaptureDb.Clear();
+            handlers.Packet = cap => captureWindow.AddPacket(cap);
+            captureHandlers.Add(iecs, handlers);
+
+            captureWindow.OnCaptureActiveChanged += handlers.ActiveChanged;
+            captureWindow.OnClearCapture += handlers.Clear;
             iecs.CaptureDb.CaptureActive = captureWindow.CaptureActive;
-            iecs.CaptureDb.OnNewPacket += (cap) =>
-            {
-                captureWindow.AddPacket(cap);
-            };
-            // re-use for Reports
+            iecs.CaptureDb.OnNewPacket += handlers.Packet;
             iecs.Controller.NewReport += reportWindow.ReportsView_OnNewReport;
         }
 
         internal void UnBindFromCapture(Iec61850State iecs)
         {
-            captureWindow.OnCaptureActiveChanged -= (ca) =>
-            {
-                iecs.CaptureDb.CaptureActive = ca;
-            };
-            captureWindow.OnClearCapture -= () =>
-            {
-                iecs.CaptureDb.Clear();
-            };
-            iecs.CaptureDb.OnNewPacket -= (cap) =>
-            {
-                captureWindow.AddPacket(cap);
-            };
-            // re-use for Reports
+            CaptureSubscriptions handlers;
+            if (!captureHandlers.TryGetValue(iecs, out handlers)) return;
+            captureWindow.OnCaptureActiveChanged -= handlers.ActiveChanged;
+            captureWindow.OnClearCapture -= handlers.Clear;
+            iecs.CaptureDb.OnNewPacket -= handlers.Packet;
             iecs.Controller.NewReport -= reportWindow.ReportsView_OnNewReport;
+            captureHandlers.Remove(iecs);
+        }
+
+        public void ShowScadaView()
+        {
+            if (scadaWindow != null)
+                scadaWindow.Show();
+        }
+
+        internal void AddScadaSignal(NodeBase signal, bool asCommand)
+        {
+            ShowScadaView();
+            if (scadaWindow != null)
+                scadaWindow.AddSignal(signal, asCommand);
+        }
+
+        internal void ExecuteScadaCommand(NodeBase signal)
+        {
+            if (iedWindow != null)
+                iedWindow.OpenControlDialog(signal);
         }
 
         public void AddSCLView(string filename)

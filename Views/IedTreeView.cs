@@ -538,6 +538,20 @@ namespace IEDExplorer.Views
                         item.Tag = n;
                         item.Click += new EventHandler(OnSendCommandClick);
                     }
+                    // Add individual data attributes to the FAT dashboard.
+                    if (n is NodeData && !(n is NodeDO) && n.isLeaf())
+                    {
+                        item = menu.Items.Add("Add to SCADA / monitor");
+                        item.Tag = n;
+                        item.Click += new EventHandler(OnAddScadaMonitorClick);
+
+                        if (ScadaView.IsControlNode(n))
+                        {
+                            item = menu.Items.Add("Add to SCADA / command");
+                            item.Tag = n;
+                            item.Click += new EventHandler(OnAddScadaCommandClick);
+                        }
+                    }
                     if (n is NodeData || (n is NodeDO) && (!(n as NodeDO).IsIecModel) || n is NodeFC || n is NodeVL)
                     {
                         item = menu.Items.Add("Read Data");
@@ -716,6 +730,24 @@ namespace IEDExplorer.Views
                     MessageBox.Show("An error saving MMS file " + nfi.FullName + " to file " + fd.FileName);
                 }
             }
+        }
+
+        void OnAddScadaMonitorClick(object sender, EventArgs e)
+        {
+            winMgr.AddScadaSignal((NodeBase)(sender as ToolStripItem).Tag, false);
+        }
+
+        void OnAddScadaCommandClick(object sender, EventArgs e)
+        {
+            winMgr.AddScadaSignal((NodeBase)(sender as ToolStripItem).Tag, true);
+        }
+
+        internal void OpenControlDialog(NodeBase signal)
+        {
+            if (signal == null || !ScadaView.IsControlNode(signal)) return;
+            ToolStripItem item = new ToolStripMenuItem { Tag = signal };
+            // Reuse the normal dialog, control-model detection, and SBO sequence.
+            DoSendCommandClick(item, ActionRequested.WriteAsStructure);
         }
 
         void OnSendCommandClick(object sender, EventArgs e)
