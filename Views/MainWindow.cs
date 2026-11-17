@@ -197,6 +197,8 @@ namespace IEDExplorer.Views
 
         public void Stop()
         {
+            // Drop the stale model: a new MMS connection creates a fresh data tree.
+            iecf = null;
             toolStripButton_Stop.Enabled = false;
             toolStripButton_Run.Enabled = true;
         }
