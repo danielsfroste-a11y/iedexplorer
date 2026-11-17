@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using System.Xml.Linq;
+using System.Xml;
 using WeifenLuo.WinFormsUI.Docking;
 
 namespace IEDExplorer.Views
@@ -146,8 +147,8 @@ namespace IEDExplorer.Views
                 return;
             }
 
-            var state = manager.mainWindow.Get_iecf();
-            if (state == null || state.DataModel == null)
+            Iec61850State state;
+            if (!IsOnline(out state)
             {
                 MessageBox.Show(this, "Connect to the IED and load its MMS model before adding signals.",
                     "No IED", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -346,7 +347,7 @@ namespace IEDExplorer.Views
             foreach (SignalCard card in cards)
             {
                 if (card.Control != null)
-                    card.Control.Enabled = online && allowControls.Checked && card.Node != null;
+                    card.Control.Enabled = online && allowControls.Checked && IsControlNode(card.Node);
                 if (card.IsCommand)
                 {
                     card.Detail.Text = card.Address + (online ? "\nCommand requires confirmation" : "\nOffline / unbound");
@@ -362,7 +363,7 @@ namespace IEDExplorer.Views
                 }
 
                 string current = card.Node.DataValue == null ? "—" : card.Node.StringValue;
-                if (!string.Equals(current, card.LastValue, StringComparison.Ordinal))
+                if (card.Node.DataValue != null && !string.Equals(current, card.LastValue, StringComparison.Ordinal))
                 {
                     card.LastValue = current;
                     card.LastChanged = DateTime.Now;
@@ -456,7 +457,11 @@ namespace IEDExplorer.Views
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 try
                 {
-                    XDocument xml = XDocument.Load(dialog.FileName);
+                    XDocument xml;
+                    // Profile files are untrusted input: do not resolve entities or process DTDs.
+                    var xmlSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
+                    using (XmlReader reader = XmlReader.Create(dialog.FileName, xmlSettings))
+                        xml = XDocument.Load(reader);
                     XElement root = xml.Root;
                     if (root == null || root.Name != "ScadaLayout" || (string)root.Attribute("version") != "1")
                         throw new InvalidDataException("Unsupported SCADA profile format");
