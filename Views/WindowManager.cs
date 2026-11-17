@@ -22,6 +22,7 @@ namespace IEDExplorer.Views
         CaptureView captureWindow;
         ReportsView reportWindow;
         PollView pollWindow;
+        ScadaView scadaWindow;
 
         public List<int> SCLServers_usedPorts = new List<int>();
         public bool ReportsRunning;
@@ -80,6 +81,11 @@ namespace IEDExplorer.Views
             logWindow.CloseButtonVisible = false;
             logWindow.FormClosing += new FormClosingEventHandler(persistentWindows_FormClosing);
             logWindow.Show(dockPanel);
+
+            scadaWindow = new ScadaView(this);
+            scadaWindow.CloseButtonVisible = false;
+            scadaWindow.FormClosing += new FormClosingEventHandler(persistentWindows_FormClosing);
+            scadaWindow.Show(dockPanel);
 
             //Connect Windows Manager to helper events
             dockPanel.ActiveDocumentChanged += new EventHandler(OnActiveDocumentChanged);
@@ -178,6 +184,25 @@ namespace IEDExplorer.Views
             };
             // re-use for Reports
             iecs.Controller.NewReport -= reportWindow.ReportsView_OnNewReport;
+        }
+
+        public void ShowScadaView()
+        {
+            if (scadaWindow != null)
+                scadaWindow.Show();
+        }
+
+        internal void AddScadaSignal(NodeBase signal, bool asCommand)
+        {
+            ShowScadaView();
+            if (scadaWindow != null)
+                scadaWindow.AddSignal(signal, asCommand);
+        }
+
+        internal void ExecuteScadaCommand(NodeBase signal)
+        {
+            if (iedWindow != null)
+                iedWindow.OpenControlDialog(signal);
         }
 
         public void AddSCLView(string filename)
