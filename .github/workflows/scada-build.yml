@@ -1,0 +1,40 @@
+name: Windows SCADA FAT build
+
+on:
+  push:
+    branches: [feature/scada-fat-view]
+    paths:
+      - "**/*.cs"
+      - "**/*.csproj"
+      - "**/*.sln"
+      - ".github/workflows/scada-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Compile legacy WinForms
+    runs-on: [self-hosted, Windows]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build with Visual Studio MSBuild
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (-not (Test-Path $vswhere)) { throw 'Visual Studio Build Tools / vswhere not found on the runner' }
+          $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          if (-not $msbuild) { throw 'MSBuild not found via vswhere' }
+          Write-Host "MSBuild: $msbuild"
+          & $msbuild IEDExplorer.sln /t:Build /p:Configuration=Release '/p:Platform=Any CPU' /m:1 /v:minimal /nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload FAT test build (3 day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: IEDExplorer-SCADA-FAT
+          path: bin/Release/
+          if-no-files-found: error
+          retention-days: 3
