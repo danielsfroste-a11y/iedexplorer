@@ -198,6 +198,11 @@ namespace IEDExplorer.Views
                 scadaWindow.AddSignal(signal, asCommand);
         }
 
+        internal bool ExecuteScadaBreakerCommand(NodeData operate, int requestedState)
+        {
+            return iedWindow != null && iedWindow.OpenBreakerCommand(operate, requestedState);
+        }
+
         internal void ExecuteScadaCommand(NodeBase signal)
         {
             if (iedWindow != null)
